@@ -48,6 +48,7 @@ from outcome_tracker import (
     set_follow_up_time, get_conversion_metrics, VALID_OUTCOMES,
 )
 from lead_scorer import score_lead
+from voice_routes import router as voice_router, auto_trigger_call_if_priority_1
 
 load_dotenv()
 
@@ -106,6 +107,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(RequestLoggingMiddleware)
+
+# ── Voice call routes ────────────────────────────────────────────────────────
+app.include_router(voice_router)
 
 
 # ── Duplicate-message guard (in-memory; bounded to 10 000 entries) ────────────
@@ -364,6 +368,25 @@ async def whatsapp_webhook(request: Request):
 
         if engine.is_complete():
             delete_session(session_id)
+
+            # ── Auto-call trigger for priority 1 leads ───────────────────────
+            if brief and priority_r == 1:
+                cd = engine.state.collected_data()
+                try:
+                    import asyncio
+                    asyncio.create_task(
+                        auto_trigger_call_if_priority_1(
+                            session_id=session_id,
+                            phone=from_number,
+                            lead_score=engine.state.lead_score,
+                            priority_rank=priority_r,
+                            treatment_history=cd.get("treatment_history"),
+                            duration_months=cd.get("duration_months"),
+                            age=cd.get("age"),
+                        )
+                    )
+                except Exception as call_err:
+                    log.warning(f"Auto-call trigger failed: {call_err}")
 
         reply = result.get("response_text") or FALLBACK_MESSAGE
 
