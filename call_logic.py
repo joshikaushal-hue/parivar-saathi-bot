@@ -64,6 +64,7 @@ OBJECTION_KEYWORDS = {
 def get_call_script(lead_score: str, treatment: Optional[str] = None) -> dict:
     """
     Returns the opening call script for a given lead profile.
+    All scripts are in natural Hindi for Sarvam TTS.
 
     Returns:
         {
@@ -78,94 +79,100 @@ def get_call_script(lead_score: str, treatment: Optional[str] = None) -> dict:
     if "fail" in th and "ivf" in th:
         return {
             "opening": (
-                "Hello, this is Parivar Saathi calling. I understand you've been through IVF before "
-                "and it's been a difficult journey. I'm not here to pitch anything — "
-                "I'd simply like to understand your situation better and see if we can help. "
-                "Is this a good time?"
+                "नमस्ते, मैं परिवार साथी से बोल रही हूँ। "
+                "मुझे पता है कि आपने पहले आई वी एफ़ करवाया है और ये सफ़र आसान नहीं रहा। "
+                "मैं कोई बिक्री की बात करने नहीं आई हूँ। बस आपकी स्थिति समझना चाहती हूँ। "
+                "क्या अभी आपके पास दो मिनट हैं?"
             ),
-            "question_1": "Could you share a little about your previous IVF experience — which clinic, and what happened?",
-            "question_2": "What has been the most challenging part of this journey for you?",
+            "question_1": "आप बताइए, पिछली बार आई वी एफ़ कहाँ करवाया था और कैसा अनुभव रहा?",
+            "question_2": "इस पूरे सफ़र में सबसे मुश्किल क्या लगा आपको?",
             "soft_close": (
-                "Based on what you've shared, I'd like to arrange a detailed review with our specialist — "
-                "completely at no cost. They can look at your previous reports and give you an honest "
-                "second opinion. Would you be open to that?"
+                "आपने जो बताया उसके हिसाब से, हमारे डॉक्टर आपकी पुरानी रिपोर्ट्स देखकर "
+                "एक ईमानदार राय दे सकते हैं। ये बिल्कुल मुफ़्त है। "
+                "क्या आप इसके लिए तैयार होंगी?"
             ),
         }
 
     if "ivf" in th:
         return {
             "opening": (
-                "Hello, this is Parivar Saathi calling. I can see you've had experience with IVF. "
-                "I'd love to understand where you are in your journey right now. "
-                "Is this a good time to talk briefly?"
+                "नमस्ते, मैं परिवार साथी से बोल रही हूँ। "
+                "मुझे पता है कि आपने आई वी एफ़ का अनुभव किया है। "
+                "मैं जानना चाहती हूँ कि अभी आप कहाँ हैं इस सफ़र में। "
+                "क्या दो मिनट बात कर सकते हैं?"
             ),
-            "question_1": "How did your previous IVF cycle go, and what are you considering next?",
-            "question_2": "What's the most important thing you're looking for in a clinic at this point?",
+            "question_1": "आपका पिछला आई वी एफ़ साइकल कैसा रहा, और अब आगे क्या सोच रहे हैं?",
+            "question_2": "अभी क्लिनिक चुनने में आपके लिए सबसे ज़रूरी बात क्या है?",
             "soft_close": (
-                "It sounds like the right next step would be a consultation with our specialist "
-                "who can review your history and suggest a personalised approach. "
-                "Could we set that up for you this week?"
+                "लगता है कि अगला सही कदम हमारे डॉक्टर से बात करना होगा। "
+                "वो आपकी पूरी हिस्ट्री देखकर सही सलाह दे सकते हैं। "
+                "क्या इस हफ़्ते टाइम निकाल पाएंगे?"
             ),
         }
 
     if "iui" in th:
         return {
             "opening": (
-                "Hello, this is Parivar Saathi calling. I understand you've tried IUI — "
-                "that takes courage and patience. I wanted to share some information about "
-                "what the next step could look like. Is this a good time?"
+                "नमस्ते, मैं परिवार साथी से बोल रही हूँ। "
+                "मुझे पता है कि आपने आई यू आई ट्राई किया है। "
+                "ये हिम्मत और धीरज की बात है। "
+                "मैं आपको आगे के विकल्पों के बारे में बताना चाहती हूँ। क्या अभी ठीक है?"
             ),
-            "question_1": "How many IUI cycles have you done, and how did they go?",
-            "question_2": "Have your doctors discussed IVF as a next option with you?",
+            "question_1": "आपने कितने आई यू आई साइकल किए और कैसा रहा?",
+            "question_2": "क्या आपके डॉक्टर ने आई वी एफ़ के बारे में बात की है?",
             "soft_close": (
-                "Many couples who've done IUI find a consultation with a fertility specialist very clarifying. "
-                "It helps decide whether IVF is the right step or if there's more to explore. "
-                "Would you like me to set up a free consultation?"
+                "एक बार हमारे फर्टिलिटी डॉक्टर से बात करने से बहुत कुछ साफ़ हो जाता है। "
+                "ये बिल्कुल मुफ़्त है और कोई दबाव नहीं है। "
+                "क्या मैं एक कंसल्टेशन बुक कर दूँ?"
             ),
         }
 
     if lead_score == "Hot":
         return {
             "opening": (
-                "Hello, this is Parivar Saathi calling. I know you reached out to us "
-                "and I wanted to personally follow up. I can imagine this has been a long road. "
-                "Do you have a few minutes to talk?"
+                "नमस्ते, मैं परिवार साथी से बोल रही हूँ। "
+                "आपने हमसे संपर्क किया था, तो मैं खुद फ़ॉलो अप कर रही हूँ। "
+                "मैं समझ सकती हूँ कि ये एक लंबा सफ़र रहा है। "
+                "क्या दो मिनट बात कर सकते हैं?"
             ),
-            "question_1": "Can you tell me a bit about your fertility journey so far?",
-            "question_2": "Have you spoken to a fertility specialist recently, or are you still at the evaluation stage?",
+            "question_1": "ज़रा बताइए, अभी तक आपका फर्टिलिटी का सफ़र कैसा रहा है?",
+            "question_2": "क्या हाल ही में किसी फर्टिलिटी डॉक्टर से मिले हैं, या अभी जानकारी इकट्ठा कर रहे हैं?",
             "soft_close": (
-                "Based on what you've shared, I'd suggest a consultation with our specialist — "
-                "it's free and can give you a clear picture of your options. "
-                "Would this week work for you?"
+                "आपने जो बताया उससे लगता है कि हमारे डॉक्टर से एक बार बात करना फ़ायदेमंद होगा। "
+                "ये मुफ़्त है और आपको अपने सभी विकल्प साफ़ हो जाएंगे। "
+                "क्या इस हफ़्ते कोई टाइम सूट करेगा?"
             ),
         }
 
     if lead_score == "Warm":
         return {
             "opening": (
-                "Hello, this is Parivar Saathi calling. You reached out to us recently "
-                "and I wanted to follow up personally. Hope this is a good time?"
+                "नमस्ते, मैं परिवार साथी से बोल रही हूँ। "
+                "आपने हाल ही में हमसे संपर्क किया था, तो मैं फ़ॉलो अप कर रही हूँ। "
+                "उम्मीद है अभी बात करने का अच्छा समय है?"
             ),
-            "question_1": "How long have you and your partner been trying, and how are you feeling about it?",
-            "question_2": "Have you had any fertility tests done so far?",
+            "question_1": "आप और आपके पार्टनर कितने समय से कोशिश कर रहे हैं, और कैसा महसूस हो रहा है?",
+            "question_2": "क्या अभी तक कोई फर्टिलिटी टेस्ट करवाए हैं?",
             "soft_close": (
-                "A simple fertility check-up can give you a lot of clarity at this stage — "
-                "it's not a big commitment, just an information session. "
-                "Would you be open to scheduling one?"
+                "एक सिंपल फर्टिलिटी चेकअप से बहुत कुछ पता चल जाता है। "
+                "कोई बड़ी बात नहीं है, बस जानकारी के लिए। "
+                "क्या आप एक अपॉइंटमेंट लेना चाहेंगे?"
             ),
         }
 
     # Cold lead
     return {
         "opening": (
-            "Hello, this is Parivar Saathi. You had reached out to us and I just wanted "
-            "to check in briefly. Hope you're doing well?"
+            "नमस्ते, मैं परिवार साथी से बोल रही हूँ। "
+            "आपने हमसे संपर्क किया था, बस हाल-चाल जानना चाहती थी। "
+            "उम्मीद है सब ठीक है?"
         ),
-        "question_1": "How are things going? Are you still in the early stages of planning?",
-        "question_2": "Is there anything you'd like to know about fertility and your options at this stage?",
+        "question_1": "कैसा चल रहा है? क्या अभी शुरुआती दौर में हैं प्लानिंग की?",
+        "question_2": "क्या फर्टिलिटी और अपने विकल्पों के बारे में कुछ जानना चाहेंगे?",
         "soft_close": (
-            "We offer a free information session with our fertility advisor — "
-            "no pressure, just to answer your questions. Would that be useful?"
+            "हम एक मुफ़्त जानकारी सत्र देते हैं फर्टिलिटी एडवाइज़र के साथ। "
+            "कोई दबाव नहीं, बस आपके सवालों के जवाब। "
+            "क्या ये आपके काम आएगा?"
         ),
     }
 
@@ -230,101 +237,100 @@ def handle_objection(
 
 
 def _handle_cost(lead_score: str, has_ivf_history: bool) -> dict:
-    acknowledge = "Completely understandable — IVF costs are significant and we take that seriously."
+    acknowledge = "बिल्कुल सही कहा आपने। आई वी एफ़ का खर्चा काफ़ी होता है, ये हम अच्छे से समझते हैं।"
     reframe = (
-        "We offer flexible payment plans and can help you understand what's covered. "
-        "Importantly, we only recommend what's medically right for your case — "
-        "no unnecessary procedures."
+        "हम आसान किस्तों की सुविधा देते हैं। "
+        "और सबसे ज़रूरी बात, हम सिर्फ़ वही सलाह देते हैं जो मेडिकली सही हो। "
+        "कोई बेवजह का ख़र्चा नहीं।"
         if not has_ivf_history else
-        "Having gone through this before, you know the cost is real. "
-        "We want to make sure any investment is targeted and maximises your chances — "
-        "which is why we do a thorough review before recommending anything."
+        "आपने पहले भी ये सफ़र तय किया है तो आपको पता है कि ख़र्चा कितना होता है। "
+        "हम चाहते हैं कि आपका हर पैसा सही जगह लगे। "
+        "इसलिए हम पहले पूरी तरह रिव्यू करते हैं।"
     )
     next_step = (
-        "Let's start with a free consultation — no commitment, no cost. "
-        "After that, we can give you a clear cost estimate based on your specific situation."
+        "चलिए पहले एक मुफ़्त कंसल्टेशन से शुरू करते हैं। कोई ख़र्चा नहीं, कोई दबाव नहीं। "
+        "उसके बाद हम आपकी स्थिति के हिसाब से सही अनुमान बता सकते हैं।"
     )
     return {"acknowledge": acknowledge, "reframe": reframe,
             "next_step": next_step, "exit_if_repeated": False}
 
 
 def _handle_delay(lead_score: str) -> dict:
-    acknowledge = "I respect that — you know your situation best."
+    acknowledge = "मैं आपकी बात समझती हूँ। आप अपनी स्थिति सबसे अच्छे से जानते हैं।"
     reframe = (
-        "I just want to share one thought: fertility is time-sensitive, "
-        "and the information from a consultation costs nothing but can change how you plan. "
-        "It's not about rushing into treatment — it's about knowing your options."
+        "बस एक बात कहना चाहूँगी कि फर्टिलिटी में समय बहुत मायने रखता है। "
+        "एक कंसल्टेशन में कोई ख़र्चा नहीं लगता, लेकिन जो जानकारी मिलती है वो बहुत काम की होती है। "
+        "ये इलाज की जल्दी नहीं है, बस अपने विकल्प जानने की बात है।"
         if lead_score in ("Hot", "Warm") else
-        "That makes complete sense at this early stage. "
-        "Many couples prefer to try naturally for a while longer — that's completely valid."
+        "ये बिल्कुल सही सोच है इस शुरुआती दौर में। "
+        "बहुत से जोड़े कुछ और समय नेचुरली ट्राई करना चाहते हैं और ये पूरी तरह सही है।"
     )
     next_step = (
-        "Would you be open to just a brief information call — 15 minutes, no obligation? "
-        "You can decide about treatment entirely at your own pace."
+        "क्या आप बस पंद्रह मिनट की एक जानकारी वाली कॉल के लिए तैयार होंगे? "
+        "कोई बंधन नहीं। इलाज का फ़ैसला पूरी तरह आपके हाथ में रहेगा।"
         if lead_score in ("Hot", "Warm") else
-        "If things don't progress in the next few months, please do reach out. "
-        "We're here whenever you're ready."
+        "अगर अगले कुछ महीनों में बात नहीं बनती, तो ज़रूर संपर्क कीजिएगा। "
+        "हम यहाँ हैं जब भी आप तैयार हों।"
     )
     return {"acknowledge": acknowledge, "reframe": reframe,
             "next_step": next_step, "exit_if_repeated": lead_score == "Cold"}
 
 
 def _handle_fear(has_ivf_history: bool) -> dict:
-    acknowledge = "That fear is completely natural — and I want you to know it's safe to feel that way."
+    acknowledge = "ये डर बिल्कुल स्वाभाविक है। और मैं चाहती हूँ कि आप जानें कि ऐसा महसूस करना ठीक है।"
     reframe = (
-        "What you went through was hard, and it makes sense that you're cautious. "
-        "We would start by understanding exactly what happened in your previous cycle "
-        "before suggesting anything new. You deserve answers, not just another attempt."
+        "आपने जो पहले झेला है वो आसान नहीं था। सतर्क रहना समझदारी है। "
+        "हम पहले ये समझेंगे कि पिछली बार क्या हुआ था, "
+        "उसके बाद ही कुछ नया सुझाएंगे। आपको जवाब मिलने चाहिए, बस एक और कोशिश नहीं।"
         if has_ivf_history else
-        "Most of our patients felt the same before their first consultation. "
-        "What helps is having clear information — then the unknown feels less scary. "
-        "There is no pressure to make any decision at a consultation."
+        "हमारे ज़्यादातर मरीज़ पहली कंसल्टेशन से पहले ऐसा ही महसूस करते थे। "
+        "सही जानकारी मिलने पर अनजान डर कम हो जाता है। "
+        "कंसल्टेशन में कोई फ़ैसला लेने का दबाव नहीं होता।"
     )
     next_step = (
-        "Can we arrange a conversation with our specialist? "
-        "No commitment — just a space to ask questions and understand your options."
+        "क्या हम डॉक्टर से एक बात करवा दें? "
+        "कोई बंधन नहीं, बस सवाल पूछने और विकल्प समझने का मौका।"
     )
     return {"acknowledge": acknowledge, "reframe": reframe,
             "next_step": next_step, "exit_if_repeated": False}
 
 
 def _handle_second_opinion() -> dict:
-    acknowledge = "That is a very sensible approach — getting a second opinion is a sign of a well-informed patient."
+    acknowledge = "ये बहुत समझदारी भरा कदम है। दूसरी राय लेना एक जागरूक मरीज़ की निशानी है।"
     reframe = (
-        "We welcome that completely. We are happy to review your existing reports "
-        "and give you an honest assessment — even if the conclusion is that your current "
-        "clinic is the right fit for you."
+        "हम इसका पूरा स्वागत करते हैं। हम ख़ुशी से आपकी मौजूदा रिपोर्ट्स देखकर "
+        "ईमानदार राय देंगे। अगर नतीजा ये भी हो कि आपकी मौजूदा क्लिनिक सही है, "
+        "तो भी हम वही बताएंगे।"
     )
     next_step = (
-        "Could we set up a report review session with our specialist? "
-        "It's free and you'll walk away with a clear, independent view."
+        "क्या हम डॉक्टर के साथ एक रिपोर्ट रिव्यू सेशन रख दें? "
+        "ये मुफ़्त है और आपको एक स्वतंत्र राय मिल जाएगी।"
     )
     return {"acknowledge": acknowledge, "reframe": reframe,
             "next_step": next_step, "exit_if_repeated": False}
 
 
 def _handle_partner() -> dict:
-    acknowledge = "Absolutely — this is a decision you should make together."
+    acknowledge = "बिल्कुल सही। ये फ़ैसला दोनों को मिलकर लेना चाहिए।"
     reframe = (
-        "I completely understand. Fertility treatment works best when both partners "
-        "are aligned. Would it be possible for both of you to join a call together? "
-        "We can walk through everything and answer all questions at once."
+        "मैं पूरी तरह समझती हूँ। फर्टिलिटी ट्रीटमेंट तब सबसे अच्छा काम करता है "
+        "जब दोनों पार्टनर एक साथ हों। क्या दोनों मिलकर एक कॉल जॉइन कर सकते हैं? "
+        "हम सब कुछ समझा देंगे और सारे सवालों के जवाब दे देंगे।"
     )
     next_step = (
-        "If a joint call isn't possible right now, I can send you a short summary "
-        "that covers everything we discussed — easy to share with your partner. "
-        "Would that help?"
+        "अगर अभी जॉइंट कॉल मुश्किल है, तो मैं आपको एक छोटा सा सारांश भेज सकती हूँ "
+        "जो आप अपने पार्टनर के साथ शेयर कर सकते हैं। क्या ये ठीक रहेगा?"
     )
     return {"acknowledge": acknowledge, "reframe": reframe,
             "next_step": next_step, "exit_if_repeated": False}
 
 
 def _handle_not_interested() -> dict:
-    acknowledge = "Of course — I completely respect that."
-    reframe = "We won't call again unless you reach out to us."
+    acknowledge = "जी बिल्कुल, मैं आपकी बात का पूरा सम्मान करती हूँ।"
+    reframe = "जब तक आप ख़ुद संपर्क नहीं करेंगे, हम दोबारा कॉल नहीं करेंगे।"
     next_step = (
-        "If your situation changes, our WhatsApp is always available — "
-        "day or night, no pressure. Take care and I wish you all the best."
+        "अगर कभी मन बदले, तो हमारा वॉट्सऐप हमेशा उपलब्ध है। "
+        "दिन हो या रात, कोई दबाव नहीं। अपना ख़्याल रखिए।"
     )
     return {"acknowledge": acknowledge, "reframe": reframe,
             "next_step": next_step, "exit_if_repeated": True}
@@ -332,8 +338,8 @@ def _handle_not_interested() -> dict:
 
 def _handle_default() -> dict:
     return {
-        "acknowledge": "I understand.",
-        "reframe": "Let me make sure I address that properly.",
-        "next_step": "Could you tell me a little more so I can help better?",
+        "acknowledge": "जी, मैं समझ सकती हूँ।",
+        "reframe": "मैं आपकी बात को सही से समझना चाहती हूँ।",
+        "next_step": "क्या आप थोड़ा और बता सकते हैं ताकि मैं बेहतर मदद कर सकूँ?",
         "exit_if_repeated": False,
     }

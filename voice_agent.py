@@ -216,7 +216,7 @@ def init_call(
 
 def get_opening_text(state: VoiceCallState) -> str:
     """Get the opening script text for the call."""
-    return state.script.get("opening", "Hello, this is Parivar Saathi calling. Is this a good time?")
+    return state.script.get("opening", "नमस्ते, मैं परिवार साथी से बोल रही हूँ। क्या अभी बात कर सकते हैं?")
 
 
 def process_caller_response(
@@ -238,7 +238,7 @@ def process_caller_response(
     state = get_voice_state(call_sid)
     if not state:
         log.warning(f"No voice state for call_sid={call_sid}")
-        return ("Thank you for your time. Goodbye.", True)
+        return ("आपके समय के लिए धन्यवाद। नमस्ते।", True)
 
     state.turn_count += 1
     caller_text = caller_text.strip()
@@ -273,8 +273,8 @@ def process_caller_response(
         if state.objection_count >= state.max_objections:
             response = handle_objection(objection, state.lead_score, state.treatment_history)
             goodbye = (
-                f"{response['acknowledge']} I understand completely. "
-                "We're here whenever you're ready. Thank you for your time."
+                f"{response['acknowledge']} मैं पूरी तरह समझती हूँ। "
+                "जब भी आप तैयार हों, हम यहाँ हैं। आपके समय के लिए धन्यवाद।"
             )
             state.stage = "ended"
             save_voice_state(state)
@@ -295,8 +295,8 @@ def process_caller_response(
     # If caller says no to soft_close → graceful end
     if state.stage == "soft_close" and is_negative:
         goodbye = (
-            "I completely understand. We're here whenever you're ready. "
-            "You can reach us on WhatsApp anytime. Take care."
+            "बिल्कुल समझ सकती हूँ। जब भी आप तैयार हों, हम यहाँ हैं। "
+            "आप कभी भी वॉट्सऐप पर संपर्क कर सकते हैं। अपना ख़्याल रखिए।"
         )
         state.stage = "ended"
         save_voice_state(state)
@@ -305,8 +305,8 @@ def process_caller_response(
     # If caller says yes to soft_close → great, book it
     if state.stage == "soft_close" and is_positive:
         confirm = (
-            "Wonderful. Our counselor will reach out to you shortly to schedule the consultation. "
-            "Thank you for your time, and take care."
+            "बहुत अच्छा। हमारे काउंसलर जल्द ही आपसे संपर्क करेंगे और अपॉइंटमेंट तय करेंगे। "
+            "आपके समय के लिए धन्यवाद, अपना ख़्याल रखिए।"
         )
         state.stage = "ended"
         save_voice_state(state)
@@ -338,7 +338,7 @@ def process_caller_response(
         return (response_text, False)
 
     # All stages exhausted → end call
-    goodbye = "Thank you for speaking with us. Our team will follow up with you. Take care."
+    goodbye = "हमसे बात करने के लिए धन्यवाद। हमारी टीम आपसे फ़ॉलो अप करेगी। अपना ख़्याल रखिए।"
     state.stage = "ended"
     save_voice_state(state)
     return (goodbye, True)
@@ -355,21 +355,22 @@ def _generate_dynamic_response(
     """
     try:
         system_prompt = (
-            "You are a compassionate fertility clinic counselor on a phone call. "
-            "The caller has been trying to conceive and you are doing a follow-up call. "
-            f"Lead score: {state.lead_score}. "
-            f"Treatment history: {state.treatment_history or 'unknown'}. "
-            f"Duration trying: {state.duration_months or 'unknown'} months. "
-            f"Current call stage: {state.stage}. "
+            "तुम एक फ़र्टिलिटी क्लिनिक की काउंसलर हो जो फ़ोन पर बात कर रही हो। "
+            "कॉलर को conceive करने में दिक्कत आ रही है और तुम फ़ॉलो अप कॉल कर रही हो। "
+            f"लीड स्कोर: {state.lead_score}। "
+            f"ट्रीटमेंट हिस्ट्री: {state.treatment_history or 'पता नहीं'}। "
+            f"कितने महीने से कोशिश: {state.duration_months or 'पता नहीं'}। "
+            f"कॉल स्टेज: {state.stage}। "
             "\n"
-            "RULES:\n"
-            "- Be warm, empathetic, and professional\n"
-            "- Keep responses under 40 words — this is a phone call, not a chat\n"
-            "- Acknowledge what the caller said before moving on\n"
-            "- Do NOT use medical jargon\n"
-            "- Do NOT make promises or guarantees\n"
-            "- Speak naturally as you would on a phone call\n"
-            "- If the caller is emotional, prioritize empathy over information\n"
+            "नियम:\n"
+            "- हमेशा हिंदी में बोलो। कोई भी अंग्रेज़ी शब्द मत बोलो।\n"
+            "- गर्मजोशी, हमदर्दी और प्रोफ़ेशनल अंदाज़ में बात करो\n"
+            "- जवाब 40 शब्दों से कम रखो — ये फ़ोन कॉल है, चैट नहीं\n"
+            "- पहले कॉलर की बात को स्वीकार करो, फिर आगे बढ़ो\n"
+            "- मेडिकल शब्दावली का इस्तेमाल मत करो\n"
+            "- कोई वादा या गारंटी मत दो\n"
+            "- फ़ोन पर बात करने जैसा natural अंदाज़ रखो\n"
+            "- अगर कॉलर भावुक हो, तो जानकारी से पहले हमदर्दी दिखाओ\n"
         )
 
         response = openai_client.chat.completions.create(
