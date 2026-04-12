@@ -392,6 +392,11 @@ def process_caller_response(
 
     script = _get_script(state)
 
+    log.info(
+        f"STATE DBG | sid={call_sid} | stage={state.stage} | "
+        f"language={state.language} | tts={get_tts_language(state)}"
+    )
+
     # ── INTENT DETECTION (runs BEFORE flow, at EVERY stage) ─────────────────
     # Priority: not_interested → send_details → call_later
     # Uses keyword matching ONLY. No OpenAI.
@@ -435,10 +440,17 @@ def process_caller_response(
     # ── STAGE: language (caller chose language) ─────────────────────────────
     if state.stage == "language":
         text_lower = caller_text.lower()
-        if any(w in text_lower for w in ["english", "angrezi", "inglish", "eng"]):
+        # Twilio hi-IN transcribes "English" as "इंग्लिश" in Devanagari
+        _ENGLISH_KEYWORDS = [
+            "english", "angrezi", "inglish", "eng",
+            "इंग्लिश", "इंगलिश", "अंग्रेज़ी", "अंग्रेजी", "इङ्ग्लिश",
+        ]
+        if any(w in text_lower for w in _ENGLISH_KEYWORDS) or any(w in caller_text for w in _ENGLISH_KEYWORDS):
             state.language = "en"
+            log.info(f"LANG LOCK | sid={call_sid} | ENGLISH detected from: {caller_text!r}")
         else:
             state.language = "hi"
+            log.info(f"LANG LOCK | sid={call_sid} | HINDI (default) from: {caller_text!r}")
         # Language is now LOCKED. All future lines use this language.
         script = _get_script(state)  # refresh script for new language
         state.stage = "q1_duration"
