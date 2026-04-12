@@ -193,7 +193,7 @@ async def voice_gather(request: Request):
 
     # No speech detected — prompt again
     if not speech_result:
-        reprompt = "I didn't catch that. Could you say that again?"
+        reprompt = "मुझे सुनाई नहीं दिया। क्या आप दोबारा बोल सकते हैं?"
         twiml = _voice_twiml_say(reprompt, gather=True)
         return _twiml_response(twiml)
 

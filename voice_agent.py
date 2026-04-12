@@ -379,8 +379,9 @@ def _generate_dynamic_response(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": caller_text},
             ],
-            max_tokens=100,
+            max_tokens=80,
             temperature=0.7,
+            timeout=8,
         )
 
         reply = response.choices[0].message.content.strip()
