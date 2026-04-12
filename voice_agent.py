@@ -1,19 +1,19 @@
 """
 voice_agent.py
-AI Voice Call Agent — Sarvam TTS + Twilio Voice Integration
+IVF AI Counsellor — Voice Call Agent (LOCKED PRODUCTION VERSION)
 
-STRICT CALL FLOW (state machine):
-  opening → permission → language → q1 → q2 → q3 → q4 → soft_close → ended
+This is NOT a chatbot. This is an IVF counsellor on call.
 
-OpenAI is ONLY used for short empathetic fillers (e.g. "samajh gaya", "theek hai").
-OpenAI does NOT generate questions or change sequence.
+STRICT CALL FLOW (NO DEVIATION):
+  opening → permission → language → q1_duration → q2_treatment → q3_age → soft_close → ended
 
-Architecture:
-  1. Twilio makes outbound call → /voice webhook answers
-  2. Opening line → Sarvam TTS → audio played
-  3. Caller speaks → Twilio <Gather speech> transcribes
-  4. State machine decides EXACT next line → Sarvam TTS → audio played
-  5. Loop until soft_close or exit → outcome recorded
+RULES:
+  - Female voice ONLY (bol rahi hoon, NEVER bol raha hoon)
+  - Language locked after selection (Hindi OR English, no mixing)
+  - OpenAI ONLY for 1-word acknowledgements (achha, theek hai, ji)
+  - OpenAI NEVER asks questions, changes sequence, or adds content
+  - consultation → counselling everywhere
+  - No step skipping
 """
 
 import os
@@ -26,8 +26,6 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from call_logic import detect_objection, OBJECTION_NOT_INTERESTED
-
 log = logging.getLogger("ivf_engine")
 
 # ── Sarvam TTS Configuration ────────────────────────────────────────────────
@@ -35,67 +33,111 @@ log = logging.getLogger("ivf_engine")
 SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech"
 SARVAM_API_KEY = os.environ.get("SARVAM_API_KEY", "")
 
-# Default voice settings
 SARVAM_SPEAKER = os.environ.get("SARVAM_SPEAKER", "ritu")  # Female Hindi voice
 SARVAM_LANGUAGE = os.environ.get("SARVAM_LANGUAGE", "hi-IN")
 SARVAM_MODEL = "bulbul:v3"
-SARVAM_PACE = 0.95  # Slightly slower for clarity on phone
-SARVAM_SAMPLE_RATE = 8000  # 8kHz for telephony (Twilio standard)
+SARVAM_PACE = 0.95
+SARVAM_SAMPLE_RATE = 8000  # 8kHz for telephony
 
-# Audio cache directory
 AUDIO_CACHE_DIR = os.path.join(tempfile.gettempdir(), "ivf_voice_cache")
 os.makedirs(AUDIO_CACHE_DIR, exist_ok=True)
 
 
-# ── STRICT CALL FLOW DEFINITION ─────────────────────────────────────────────
-# Each stage has a FIXED line. No OpenAI decides what to say.
-# Order: opening → permission → language → q1 → q2 → q3 → q4 → soft_close
+# ── STRICT CALL FLOW (6 steps, NO location question) ────────────────────────
 
 CALL_FLOW = [
     "opening",
-    "permission",
     "language",
     "q1_duration",
     "q2_treatment",
     "q3_age",
-    "q4_location",
     "soft_close",
 ]
 
-# Fixed script lines for each stage
-SCRIPT = {
+# ── HINDI SCRIPT (EXACT — DO NOT MODIFY) ────────────────────────────────────
+
+SCRIPT_HI = {
     "opening": (
         "नमस्ते, मैं परिवार साथी से बोल रही हूँ। "
         "आपने फर्टिलिटी के सम्बन्ध में इंक्वायरी की थी।"
     ),
-    "permission": "क्या अभी बात करने का समय ठीक है?",
+    "permission": "क्या अभी बात करना ठीक है?",
     "language": "आप हिंदी में बात करना पसंद करेंगे या इंग्लिश में?",
     "q1_duration": "आप कितने समय से conceive करने की कोशिश कर रहे हैं?",
     "q2_treatment": "क्या आपने पहले कोई ट्रीटमेंट लिया है? जैसे IUI या IVF?",
-    "q3_age": "आपकी उम्र क्या है?",
-    "q4_location": "आप किस शहर से बात कर रहे हैं?",
+    "q3_age": "आपकी age क्या है?",
     "soft_close": (
-        "ठीक है, आपके केस के हिसाब से डॉक्टर से कंसल्ट करना helpful रहेगा। "
-        "क्या आप एक consultation schedule करना चाहेंगे?"
+        "ठीक है, आपके केस के हिसाब से एक detailed बात करना useful रहेगा। "
+        "क्या मैं आपकी काउंसलिंग के लिए एक कॉल arrange कर दूँ?"
     ),
 }
 
-# Goodbye / exit lines
-GOODBYE_BUSY = "कोई बात नहीं। हम आपको बाद में कॉल करेंगे। अपना ख़्याल रखिए।"
-GOODBYE_NOT_INTERESTED = (
+# ── ENGLISH SCRIPT (EXACT — DO NOT MODIFY) ──────────────────────────────────
+
+SCRIPT_EN = {
+    "opening": (
+        "Hello, I am calling from Parivar Saathi. "
+        "You had enquired about fertility treatment."
+    ),
+    "permission": "Is this a good time to talk?",
+    "language": "Would you prefer to speak in Hindi or English?",
+    "q1_duration": "How long have you been trying to conceive?",
+    "q2_treatment": "Have you taken any treatment before? Like IUI or IVF?",
+    "q3_age": "What is your age?",
+    "soft_close": (
+        "Based on your case, a detailed discussion would be useful. "
+        "Can I arrange a counselling call for you?"
+    ),
+}
+
+# ── GOODBYE LINES (HINDI) ───────────────────────────────────────────────────
+
+GOODBYE_BUSY_HI = "कोई बात नहीं। हम आपको बाद में कॉल करेंगे। अपना ख़्याल रखिए।"
+GOODBYE_NOT_INTERESTED_HI = (
     "जी बिल्कुल, मैं आपकी बात का सम्मान करती हूँ। "
     "जब भी ज़रूरत हो, हमारा वॉट्सऐप हमेशा उपलब्ध है। अपना ख़्याल रखिए।"
 )
-GOODBYE_POSITIVE_CLOSE = (
-    "बहुत अच्छा। हमारे काउंसलर जल्द ही आपसे संपर्क करेंगे और अपॉइंटमेंट तय करेंगे। "
+GOODBYE_POSITIVE_HI = (
+    "बहुत अच्छा। हमारे काउंसलर जल्द ही आपसे संपर्क करेंगे और काउंसलिंग कॉल तय करेंगे। "
     "आपके समय के लिए धन्यवाद। अपना ख़्याल रखिए।"
 )
-GOODBYE_NEGATIVE_CLOSE = (
+GOODBYE_NEGATIVE_HI = (
     "कोई बात नहीं। जब भी आप तैयार हों, हम यहाँ हैं। "
     "आप कभी भी वॉट्सऐप पर संपर्क कर सकते हैं। अपना ख़्याल रखिए।"
 )
-GOODBYE_DEFAULT = "आपके समय के लिए धन्यवाद। अपना ख़्याल रखिए।"
-REPROMPT = "मुझे सुनाई नहीं दिया। क्या आप दोबारा बोल सकते हैं?"
+GOODBYE_DEFAULT_HI = "आपके समय के लिए धन्यवाद। अपना ख़्याल रखिए।"
+
+# ── GOODBYE LINES (ENGLISH) ─────────────────────────────────────────────────
+
+GOODBYE_BUSY_EN = "No problem. We will call you back later. Take care."
+GOODBYE_NOT_INTERESTED_EN = (
+    "Absolutely, I respect that. "
+    "Whenever you need, our WhatsApp is always available. Take care."
+)
+GOODBYE_POSITIVE_EN = (
+    "Great. Our counsellor will contact you shortly to arrange a counselling call. "
+    "Thank you for your time. Take care."
+)
+GOODBYE_NEGATIVE_EN = (
+    "No problem. Whenever you are ready, we are here. "
+    "You can reach us anytime on WhatsApp. Take care."
+)
+GOODBYE_DEFAULT_EN = "Thank you for your time. Take care."
+
+# ── REPROMPT ─────────────────────────────────────────────────────────────────
+
+REPROMPT_HI = "मुझे सुनाई नहीं दिया। क्या आप दोबारा बोल सकते हैं?"
+REPROMPT_EN = "I didn't catch that. Could you say that again?"
+
+# Exported for voice_routes.py (default Hindi)
+REPROMPT = REPROMPT_HI
+
+
+# ── FIXED FILLERS (no OpenAI needed for these) ──────────────────────────────
+
+_FILLERS_HI = ["अच्छा।", "ठीक है।", "जी।"]
+_FILLERS_EN = ["Okay.", "Alright.", "Sure."]
+_filler_index = 0  # rotates through fillers
 
 
 # ── Voice Call State ─────────────────────────────────────────────────────────
@@ -111,26 +153,17 @@ class VoiceCallState:
     duration_months: Optional[float] = None
     age: Optional[str] = None
 
-    # Call flow tracking — strict state machine
+    # Call flow — strict state machine
     stage: str = "opening"
     turn_count: int = 0
 
-    # Collected data from caller
+    # Language lock: "hi" or "en" — set after language question, enforced everywhere
+    language: str = "hi"
+
+    # Collected data
     collected_duration: str = ""
     collected_treatment: str = ""
     collected_age: str = ""
-    collected_city: str = ""
-    collected_language: str = "hindi"  # default hindi
-
-    def next_stage(self) -> Optional[str]:
-        """Returns the next stage in the STRICT call flow, or None if done."""
-        try:
-            idx = CALL_FLOW.index(self.stage)
-            if idx + 1 < len(CALL_FLOW):
-                return CALL_FLOW[idx + 1]
-        except ValueError:
-            pass
-        return None
 
 
 # In-memory voice call states (keyed by call_sid)
@@ -149,24 +182,58 @@ def delete_voice_state(call_sid: str) -> None:
     _voice_states.pop(call_sid, None)
 
 
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _get_script(state: VoiceCallState) -> dict:
+    """Return the correct script dict based on language lock."""
+    return SCRIPT_EN if state.language == "en" else SCRIPT_HI
+
+
+def _get_goodbye(name: str, state: VoiceCallState) -> str:
+    """Return the correct goodbye line based on language lock."""
+    if state.language == "en":
+        return {
+            "busy": GOODBYE_BUSY_EN,
+            "not_interested": GOODBYE_NOT_INTERESTED_EN,
+            "positive": GOODBYE_POSITIVE_EN,
+            "negative": GOODBYE_NEGATIVE_EN,
+            "default": GOODBYE_DEFAULT_EN,
+        }.get(name, GOODBYE_DEFAULT_EN)
+    return {
+        "busy": GOODBYE_BUSY_HI,
+        "not_interested": GOODBYE_NOT_INTERESTED_HI,
+        "positive": GOODBYE_POSITIVE_HI,
+        "negative": GOODBYE_NEGATIVE_HI,
+        "default": GOODBYE_DEFAULT_HI,
+    }.get(name, GOODBYE_DEFAULT_HI)
+
+
+def _get_filler(state: VoiceCallState) -> str:
+    """
+    Return a SHORT fixed filler. Rotates through 3 options.
+    NO OpenAI call. NO long sentences. NO questions.
+    Language-locked.
+    """
+    global _filler_index
+    fillers = _FILLERS_EN if state.language == "en" else _FILLERS_HI
+    filler = fillers[_filler_index % len(fillers)]
+    _filler_index += 1
+    return filler
+
+
 # ── Sarvam TTS ───────────────────────────────────────────────────────────────
 
 def _audio_cache_path(text: str) -> str:
-    """Generate a cache file path based on text hash."""
     text_hash = hashlib.md5(text.encode()).hexdigest()
     return os.path.join(AUDIO_CACHE_DIR, f"{text_hash}.wav")
 
 
 def text_to_speech(text: str, language: str = None) -> Optional[str]:
-    """
-    Convert text to speech using Sarvam AI TTS.
-    Returns path to generated WAV file, or None on failure.
-    """
+    """Convert text to speech using Sarvam AI TTS."""
     if not SARVAM_API_KEY:
         log.warning("SARVAM_API_KEY not set — TTS unavailable")
         return None
 
-    # Check cache first
     cache_path = _audio_cache_path(text)
     if os.path.exists(cache_path):
         log.debug(f"TTS cache hit: {cache_path}")
@@ -200,7 +267,6 @@ def text_to_speech(text: str, language: str = None) -> Optional[str]:
             log.error("Sarvam TTS returned empty audios array")
             return None
 
-        # Decode base64 audio and save to cache
         audio_bytes = base64.b64decode(audios[0])
         with open(cache_path, "wb") as f:
             f.write(audio_bytes)
@@ -227,7 +293,7 @@ def init_call(
     duration_months: Optional[float] = None,
     age: Optional[str] = None,
 ) -> VoiceCallState:
-    """Initialize a voice call state. Opening is played by /voice/answer."""
+    """Initialize voice call state. Opening played by /voice/answer."""
     state = VoiceCallState(
         session_id=session_id,
         call_sid=call_sid,
@@ -237,9 +303,9 @@ def init_call(
         duration_months=duration_months,
         age=age,
         stage="opening",
+        language="hi",  # default Hindi, locked after language question
     )
     save_voice_state(state)
-
     log.info(
         f"VOICE INIT | sid={call_sid} | session={session_id} | "
         f"score={lead_score} | treatment={treatment_history}"
@@ -249,14 +315,11 @@ def init_call(
 
 def get_opening_text(state: VoiceCallState) -> str:
     """
-    Get the opening text. This plays TWO lines back-to-back:
-    Introduction + Permission question.
+    Opening = Introduction + Permission in ONE TTS block.
+    Always starts in Hindi (language not yet selected).
+    Female voice: bol RAHI hoon.
     """
-    # Combine opening + permission into one TTS block
-    # so the first thing caller hears is intro + "kya abhi baat kar sakte hain?"
-    opening = SCRIPT["opening"]
-    permission = SCRIPT["permission"]
-    return f"{opening} {permission}"
+    return f"{SCRIPT_HI['opening']} {SCRIPT_HI['permission']}"
 
 
 def process_caller_response(
@@ -265,157 +328,99 @@ def process_caller_response(
     openai_client=None,
 ) -> Tuple[str, bool]:
     """
-    Process caller speech and return EXACT next scripted line.
-    State machine controls flow — NO OpenAI question generation.
-
+    STRICT state machine. Returns EXACT next scripted line.
+    OpenAI is NOT used here at all.
     Returns: (response_text, should_end_call)
     """
     state = get_voice_state(call_sid)
     if not state:
         log.warning(f"No voice state for call_sid={call_sid}")
-        return (GOODBYE_DEFAULT, True)
+        return (GOODBYE_DEFAULT_HI, True)
 
     state.turn_count += 1
     caller_text = caller_text.strip()
 
     log.info(
         f"VOICE IN  | sid={call_sid} | stage={state.stage} | "
-        f"turn={state.turn_count} | text={caller_text[:100]!r}"
+        f"lang={state.language} | turn={state.turn_count} | "
+        f"text={caller_text[:100]!r}"
     )
 
-    # ── Check for hard exit signals ─────────────────────────────────────────
+    script = _get_script(state)
+
+    # ── Hard exit signals (checked at EVERY stage) ──────────────────────────
     if _is_not_interested(caller_text):
-        log.info(f"VOICE EXIT | sid={call_sid} | not_interested")
         state.stage = "ended"
         save_voice_state(state)
-        return (GOODBYE_NOT_INTERESTED, True)
+        return (_get_goodbye("not_interested", state), True)
 
     if _is_busy(caller_text):
-        log.info(f"VOICE EXIT | sid={call_sid} | busy")
         state.stage = "ended"
         save_voice_state(state)
-        return (GOODBYE_BUSY, True)
+        return (_get_goodbye("busy", state), True)
 
-    # ── State machine: process current stage and advance ────────────────────
-
-    # STAGE: opening (caller responded to intro + permission)
+    # ── STAGE: opening (caller responded to intro + permission) ─────────────
     if state.stage == "opening":
         if _is_negative_response(caller_text):
             state.stage = "ended"
             save_voice_state(state)
-            return (GOODBYE_BUSY, True)
-        # Permission granted → ask language
+            return (_get_goodbye("busy", state), True)
+        # Permission granted → ask language (still in Hindi at this point)
         state.stage = "language"
         save_voice_state(state)
-        filler = _get_filler(openai_client, caller_text)
-        return (f"{filler} {SCRIPT['language']}", False)
+        return (SCRIPT_HI["language"], False)
 
-    # STAGE: language (caller chose language)
+    # ── STAGE: language (caller chose language) ─────────────────────────────
     if state.stage == "language":
-        # Store language preference
         text_lower = caller_text.lower()
-        if any(w in text_lower for w in ["english", "angrezi", "inglish"]):
-            state.collected_language = "english"
+        if any(w in text_lower for w in ["english", "angrezi", "inglish", "eng"]):
+            state.language = "en"
         else:
-            state.collected_language = "hindi"
-        # → Move to Q1
+            state.language = "hi"
+        # Language is now LOCKED. All future lines use this language.
+        script = _get_script(state)  # refresh script for new language
         state.stage = "q1_duration"
         save_voice_state(state)
-        filler = _get_filler(openai_client, caller_text)
-        return (f"{filler} {SCRIPT['q1_duration']}", False)
+        filler = _get_filler(state)
+        return (f"{filler} {script['q1_duration']}", False)
 
-    # STAGE: q1_duration
+    # ── STAGE: q1_duration ──────────────────────────────────────────────────
     if state.stage == "q1_duration":
         state.collected_duration = caller_text
         state.stage = "q2_treatment"
         save_voice_state(state)
-        filler = _get_filler(openai_client, caller_text)
-        return (f"{filler} {SCRIPT['q2_treatment']}", False)
+        filler = _get_filler(state)
+        return (f"{filler} {script['q2_treatment']}", False)
 
-    # STAGE: q2_treatment
+    # ── STAGE: q2_treatment ─────────────────────────────────────────────────
     if state.stage == "q2_treatment":
         state.collected_treatment = caller_text
         state.stage = "q3_age"
         save_voice_state(state)
-        filler = _get_filler(openai_client, caller_text)
-        return (f"{filler} {SCRIPT['q3_age']}", False)
+        filler = _get_filler(state)
+        return (f"{filler} {script['q3_age']}", False)
 
-    # STAGE: q3_age
+    # ── STAGE: q3_age ───────────────────────────────────────────────────────
     if state.stage == "q3_age":
         state.collected_age = caller_text
-        state.stage = "q4_location"
-        save_voice_state(state)
-        filler = _get_filler(openai_client, caller_text)
-        return (f"{filler} {SCRIPT['q4_location']}", False)
-
-    # STAGE: q4_location
-    if state.stage == "q4_location":
-        state.collected_city = caller_text
         state.stage = "soft_close"
         save_voice_state(state)
-        filler = _get_filler(openai_client, caller_text)
-        return (f"{filler} {SCRIPT['soft_close']}", False)
+        filler = _get_filler(state)
+        return (f"{filler} {script['soft_close']}", False)
 
-    # STAGE: soft_close (caller responds to consultation offer)
+    # ── STAGE: soft_close (counselling offer) ───────────────────────────────
     if state.stage == "soft_close":
+        state.stage = "ended"
+        save_voice_state(state)
         if _is_positive_response(caller_text):
-            state.stage = "ended"
-            save_voice_state(state)
-            return (GOODBYE_POSITIVE_CLOSE, True)
+            return (_get_goodbye("positive", state), True)
         else:
-            state.stage = "ended"
-            save_voice_state(state)
-            return (GOODBYE_NEGATIVE_CLOSE, True)
+            return (_get_goodbye("negative", state), True)
 
-    # Fallback — should never reach here
+    # Fallback
     state.stage = "ended"
     save_voice_state(state)
-    return (GOODBYE_DEFAULT, True)
-
-
-# ── OpenAI: ONLY for short empathetic fillers ───────────────────────────────
-
-def _get_filler(openai_client, caller_text: str) -> str:
-    """
-    Generate a SHORT empathetic filler (max 8 words) using OpenAI.
-    Examples: "समझ गया", "ठीक है", "बिल्कुल", "अच्छा"
-
-    If OpenAI fails or is unavailable, returns a simple default filler.
-    This NEVER generates questions or changes the call flow.
-    """
-    if not openai_client:
-        return "अच्छा।"
-
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "तुम एक फ़ोन काउंसलर हो। कॉलर ने कुछ बोला है। "
-                        "तुम्हें सिर्फ़ एक छोटा सा empathetic filler बोलना है। "
-                        "जैसे: 'अच्छा', 'समझ गया', 'ठीक है', 'बिल्कुल', 'जी हाँ'। "
-                        "सिर्फ़ 2-5 शब्द। कोई सवाल मत पूछो। कोई सलाह मत दो। "
-                        "सिर्फ़ हिंदी में। कोई अंग्रेज़ी नहीं।"
-                    ),
-                },
-                {"role": "user", "content": caller_text},
-            ],
-            max_tokens=20,
-            temperature=0.5,
-            timeout=5,
-        )
-        filler = response.choices[0].message.content.strip()
-        # Safety: if filler is too long or contains a question mark, discard it
-        if len(filler) > 60 or "?" in filler:
-            return "अच्छा।"
-        log.info(f"FILLER | {filler!r}")
-        return filler
-
-    except Exception as e:
-        log.warning(f"Filler OpenAI error: {e}")
-        return "अच्छा।"
+    return (_get_goodbye("default", state), True)
 
 
 # ── Response classifiers ─────────────────────────────────────────────────────
@@ -424,7 +429,7 @@ _POSITIVE_WORDS = {
     "yes", "yeah", "yep", "sure", "ok", "okay", "alright",
     "haan", "haa", "ji", "theek", "bilkul", "zaroor",
     "please", "go ahead", "sounds good", "that works",
-    "morning", "evening", "afternoon", "chalo",
+    "morning", "evening", "afternoon", "chalo", "kar do",
 }
 
 _NEGATIVE_WORDS = {
@@ -444,20 +449,16 @@ _NOT_INTERESTED_WORDS = {
 
 
 def _is_positive_response(text: str) -> bool:
-    text_lower = text.lower()
-    return any(w in text_lower for w in _POSITIVE_WORDS)
+    return any(w in text.lower() for w in _POSITIVE_WORDS)
 
 
 def _is_negative_response(text: str) -> bool:
-    text_lower = text.lower()
-    return any(w in text_lower for w in _NEGATIVE_WORDS)
+    return any(w in text.lower() for w in _NEGATIVE_WORDS)
 
 
 def _is_busy(text: str) -> bool:
-    text_lower = text.lower()
-    return any(w in text_lower for w in _BUSY_WORDS)
+    return any(w in text.lower() for w in _BUSY_WORDS)
 
 
 def _is_not_interested(text: str) -> bool:
-    text_lower = text.lower()
-    return any(w in text_lower for w in _NOT_INTERESTED_WORDS)
+    return any(w in text.lower() for w in _NOT_INTERESTED_WORDS)

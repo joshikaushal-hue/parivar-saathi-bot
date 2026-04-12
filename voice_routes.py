@@ -196,19 +196,10 @@ async def voice_gather(request: Request):
         twiml = _voice_twiml_say(REPROMPT, gather=True)
         return _twiml_response(twiml)
 
-    # Get OpenAI client for dynamic responses
-    openai_client = None
-    try:
-        from app import _get_openai_client
-        openai_client = _get_openai_client()
-    except Exception:
-        pass
-
-    # Process the caller's response
+    # Process the caller's response (strict state machine, no OpenAI)
     response_text, should_end = process_caller_response(
         call_sid=call_sid,
         caller_text=speech_result,
-        openai_client=openai_client,
     )
 
     log.info(
