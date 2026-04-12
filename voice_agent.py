@@ -124,6 +124,35 @@ GOODBYE_NEGATIVE_EN = (
 )
 GOODBYE_DEFAULT_EN = "Thank you for your time. Take care."
 
+# ── INTENT RESPONSES (language-locked) ───────────────────────────────────────
+
+INTENT_CALL_LATER_HI = (
+    "ठीक है, मैं आपको बाद में कॉल करवा देती हूँ। "
+    "आपके लिए कौनसा समय ठीक रहेगा?"
+)
+INTENT_CALL_LATER_EN = (
+    "Sure, I can arrange a call later. "
+    "What would be a convenient time for you?"
+)
+
+INTENT_SEND_DETAILS_HI = (
+    "बिल्कुल, मैं आपको वॉट्सऐप पर details भेज देती हूँ। "
+    "आपका यही नंबर सही है?"
+)
+INTENT_SEND_DETAILS_EN = (
+    "Sure, I will send you the details on WhatsApp. "
+    "Is this the correct number?"
+)
+
+INTENT_NOT_INTERESTED_HI = (
+    "ठीक है, अगर आप future में कभी बात करना चाहें तो हम available हैं। "
+    "धन्यवाद।"
+)
+INTENT_NOT_INTERESTED_EN = (
+    "Alright, if you ever wish to discuss in future, we are available. "
+    "Thank you."
+)
+
 # ── REPROMPT ─────────────────────────────────────────────────────────────────
 
 REPROMPT_HI = "मुझे सुनाई नहीं दिया। क्या आप दोबारा बोल सकते हैं?"
@@ -348,23 +377,42 @@ def process_caller_response(
 
     script = _get_script(state)
 
-    # ── Hard exit signals (checked at EVERY stage) ──────────────────────────
-    if _is_not_interested(caller_text):
-        state.stage = "ended"
-        save_voice_state(state)
-        return (_get_goodbye("not_interested", state), True)
+    # ── INTENT DETECTION (runs BEFORE flow, at EVERY stage) ─────────────────
+    # Priority: not_interested → send_details → call_later
+    # Uses keyword matching ONLY. No OpenAI.
 
-    if _is_busy(caller_text):
+    if _is_not_interested(caller_text):
+        log.info(f"INTENT | sid={call_sid} | not_interested")
         state.stage = "ended"
         save_voice_state(state)
-        return (_get_goodbye("busy", state), True)
+        if state.language == "en":
+            return (INTENT_NOT_INTERESTED_EN, True)
+        return (INTENT_NOT_INTERESTED_HI, True)
+
+    if _is_send_details(caller_text):
+        log.info(f"INTENT | sid={call_sid} | send_details")
+        state.stage = "ended"
+        save_voice_state(state)
+        if state.language == "en":
+            return (INTENT_SEND_DETAILS_EN, True)
+        return (INTENT_SEND_DETAILS_HI, True)
+
+    if _is_call_later(caller_text):
+        log.info(f"INTENT | sid={call_sid} | call_later")
+        state.stage = "ended"
+        save_voice_state(state)
+        if state.language == "en":
+            return (INTENT_CALL_LATER_EN, True)
+        return (INTENT_CALL_LATER_HI, True)
 
     # ── STAGE: opening (caller responded to intro + permission) ─────────────
     if state.stage == "opening":
         if _is_negative_response(caller_text):
             state.stage = "ended"
             save_voice_state(state)
-            return (_get_goodbye("busy", state), True)
+            if state.language == "en":
+                return (INTENT_CALL_LATER_EN, True)
+            return (INTENT_CALL_LATER_HI, True)
         # Permission granted → ask language (still in Hindi at this point)
         state.stage = "language"
         save_voice_state(state)
@@ -437,14 +485,22 @@ _NEGATIVE_WORDS = {
     "not today", "abhi nahi", "baad mein",
 }
 
-_BUSY_WORDS = {
-    "busy", "busy hoon", "abhi nahi", "baad mein call karo",
-    "not now", "bad time", "cant talk",
-}
-
 _NOT_INTERESTED_WORDS = {
     "not interested", "don't call", "hang up", "nahi chahiye",
     "no thanks", "remove my number", "mat karo call",
+    "interested nahi",
+}
+
+_CALL_LATER_WORDS = {
+    "baad mein", "baad me call", "abhi busy", "call later",
+    "later", "not now", "busy", "bad time", "cant talk",
+    "busy hoon", "baad mein call karo",
+}
+
+_SEND_DETAILS_WORDS = {
+    "details bhejo", "whatsapp karo", "info bhejo",
+    "send details", "message me", "whatsapp par bhejo",
+    "details send", "send info", "whatsapp bhejo",
 }
 
 
@@ -456,8 +512,12 @@ def _is_negative_response(text: str) -> bool:
     return any(w in text.lower() for w in _NEGATIVE_WORDS)
 
 
-def _is_busy(text: str) -> bool:
-    return any(w in text.lower() for w in _BUSY_WORDS)
+def _is_call_later(text: str) -> bool:
+    return any(w in text.lower() for w in _CALL_LATER_WORDS)
+
+
+def _is_send_details(text: str) -> bool:
+    return any(w in text.lower() for w in _SEND_DETAILS_WORDS)
 
 
 def _is_not_interested(text: str) -> bool:
