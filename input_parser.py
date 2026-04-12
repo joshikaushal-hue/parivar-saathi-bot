@@ -126,7 +126,23 @@ def parse_age(text: str) -> Optional[str]:
 # ── Treatment history parsing (UPGRADED WITH TYPOS) ──────────────────────────
 
 _TREATMENT_KEYWORDS = {
-    # IVF variations (HIGH PRIORITY FIX)
+    # IVF + failure combinations (MUST come first — longest match wins)
+    "ivf failed": "IVF failure",
+    "ivf failure": "IVF failure",
+    "ivf fail": "IVF failure",
+    "failed ivf": "IVF failure",
+    "ivf multiple": "IVF multiple failures",
+    "multiple ivf": "IVF multiple failures",
+    "ivf 2 times": "IVF multiple failures",
+    "ivf twice": "IVF multiple failures",
+    "ivf 3 times": "IVF multiple failures",
+
+    # IUI + failure combinations
+    "iui failed": "IUI failure",
+    "iui failure": "IUI failure",
+    "failed iui": "IUI failure",
+
+    # IVF variations
     "ivf": "IVF",
     "ivfr": "IVF",
     "ivf treatment": "IVF",
@@ -140,7 +156,7 @@ _TREATMENT_KEYWORDS = {
     "iui treatment": "IUI",
     "intrauterine": "IUI",
 
-    # Failure signals
+    # Failure signals (standalone — no treatment prefix)
     "multiple": "Multiple failures",
     "failed": "Multiple failures",
     "failure": "Multiple failures",

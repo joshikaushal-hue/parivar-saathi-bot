@@ -67,6 +67,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         ("call_outcome",    "TEXT"),
         ("follow_up_at",    "TEXT"),
         ("call_notes",      "TEXT"),
+        ("state_reached",   "TEXT"),
+        ("collected_data",  "TEXT"),
     ]
     for col, definition in new_cols:
         if col not in existing:

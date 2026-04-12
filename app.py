@@ -29,7 +29,7 @@ from typing import Optional
 import openai
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse, Response
 
 # ── Engine imports (existing, untouched) ──────────────────────────────────────
@@ -125,12 +125,21 @@ def _is_duplicate(message_sid: str) -> bool:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _get_openai_client() -> openai.OpenAI:
+    """Lazy singleton for the OpenAI client — created once, reused."""
+    if not hasattr(_get_openai_client, "_client"):
+        _get_openai_client._client = openai.OpenAI(
+            api_key=os.environ.get("OPENAI_API_KEY", "")
+        )
+    return _get_openai_client._client
+
+
 def _build_engine(session_id: str) -> IVFConversationEngine:
     """
     Create an IVFConversationEngine with state loaded from sessions.json.
-    A fresh OpenAI client is created on each request (lightweight — just config).
+    OpenAI client is a lazy singleton — created once on first use.
     """
-    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+    client = _get_openai_client()
     engine = IVFConversationEngine(client=client, session_id=session_id)
     engine.state = load_state(session_id)   # replaces brand-new state with persisted one
     return engine

@@ -141,3 +141,41 @@ def active_session_count() -> int:
     with _lock:
         data = _load_raw()
     return len(data)
+
+
+# ── Lightweight wrappers (used by app.py) ────────────────────────────────────
+# app.py calls load_state(session_id) → ConversationState
+# and save_state(session_id, state) — these thin wrappers bridge the gap.
+
+def load_state(session_id: str) -> ConversationState:
+    """
+    Load a ConversationState for a session_id.
+    Returns a fresh ConversationState if no saved session exists.
+    """
+    with _lock:
+        data = _load_raw()
+    session_data = data.get(session_id)
+    if not session_data:
+        return ConversationState()
+    state_data = session_data.get("state")
+    if not state_data:
+        return ConversationState()
+    known = {f.name for f in fields(ConversationState)}
+    clean = {k: v for k, v in state_data.items() if k in known}
+    try:
+        return ConversationState(**clean)
+    except (TypeError, AttributeError):
+        return ConversationState()
+
+
+def save_state(session_id: str, state: ConversationState) -> None:
+    """
+    Persist a ConversationState for a session_id.
+    Stores it in the same sessions.json format for compatibility.
+    """
+    with _lock:
+        data = _load_raw()
+        session_data = data.get(session_id, {})
+        session_data["state"] = asdict(state)
+        data[session_id] = session_data
+        _save_raw(data)

@@ -63,7 +63,7 @@ def _validate_response(data: dict, current_state: str) -> dict:
         if key not in data:
             raise ValueError(f"Missing key in AI response: {key}")
 
-    valid_states   = ["S1", "S2", "S3", "S4", "S5"]
+    valid_states   = ["S1", "S2", "S3", "S4", "S5", "S6"]
     valid_scores   = ["Hot", "Warm", "Cold"]
     valid_actions  = ["continue", "transfer", "end"]
 
