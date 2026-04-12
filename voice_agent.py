@@ -187,7 +187,8 @@ class VoiceCallState:
     turn_count: int = 0
 
     # Language lock: "hi" or "en" — set after language question, enforced everywhere
-    language: str = "hi"
+    # Default "en" because opening + language question are in English
+    language: str = "en"
 
     # Collected data
     collected_duration: str = ""
@@ -216,6 +217,11 @@ def delete_voice_state(call_sid: str) -> None:
 def _get_script(state: VoiceCallState) -> dict:
     """Return the correct script dict based on language lock."""
     return SCRIPT_EN if state.language == "en" else SCRIPT_HI
+
+
+def get_tts_language(state: VoiceCallState) -> str:
+    """Return Sarvam TTS language code based on state language lock."""
+    return "en-IN" if state.language == "en" else "hi-IN"
 
 
 def _get_goodbye(name: str, state: VoiceCallState) -> str:
@@ -252,23 +258,29 @@ def _get_filler(state: VoiceCallState) -> str:
 
 # ── Sarvam TTS ───────────────────────────────────────────────────────────────
 
-def _audio_cache_path(text: str) -> str:
-    text_hash = hashlib.md5(text.encode()).hexdigest()
+def _audio_cache_path(text: str, language: str = "hi-IN") -> str:
+    # Include language in hash so hi-IN and en-IN don't collide
+    cache_key = f"{language}:{text}"
+    text_hash = hashlib.md5(cache_key.encode()).hexdigest()
     return os.path.join(AUDIO_CACHE_DIR, f"{text_hash}.wav")
 
 
 def text_to_speech(text: str, language: str = None) -> Optional[str]:
-    """Convert text to speech using Sarvam AI TTS."""
+    """Convert text to speech using Sarvam AI TTS.
+
+    language: "en-IN" for English, "hi-IN" for Hindi.
+              Defaults to hi-IN if not specified.
+    """
     if not SARVAM_API_KEY:
         log.warning("SARVAM_API_KEY not set — TTS unavailable")
         return None
 
-    cache_path = _audio_cache_path(text)
+    lang = language or SARVAM_LANGUAGE
+
+    cache_path = _audio_cache_path(text, lang)
     if os.path.exists(cache_path):
         log.debug(f"TTS cache hit: {cache_path}")
         return cache_path
-
-    lang = language or SARVAM_LANGUAGE
 
     try:
         response = httpx.post(
@@ -332,7 +344,7 @@ def init_call(
         duration_months=duration_months,
         age=age,
         stage="opening",
-        language="hi",  # default Hindi, locked after language question
+        language="en",  # default English; locked after language question
     )
     save_voice_state(state)
     log.info(
@@ -344,11 +356,14 @@ def init_call(
 
 def get_opening_text(state: VoiceCallState) -> str:
     """
-    Opening = Introduction + Permission in ONE TTS block.
-    Always starts in Hindi (language not yet selected).
-    Female voice: bol RAHI hoon.
+    Opening = English introduction + permission in ONE TTS block.
+    Always in English (language not yet selected).
     """
-    return f"{SCRIPT_HI['opening']} {SCRIPT_HI['permission']}"
+    return (
+        "Hello, this is a call from Parivar Saathi. "
+        "You had enquired about fertility treatment. "
+        "Is this a good time to talk?"
+    )
 
 
 def process_caller_response(
@@ -410,13 +425,12 @@ def process_caller_response(
         if _is_negative_response(caller_text):
             state.stage = "ended"
             save_voice_state(state)
-            if state.language == "en":
-                return (INTENT_CALL_LATER_EN, True)
-            return (INTENT_CALL_LATER_HI, True)
-        # Permission granted → ask language (still in Hindi at this point)
+            # Opening is always English, so respond in English
+            return (INTENT_CALL_LATER_EN, True)
+        # Permission granted → ask language (in English — language not yet chosen)
         state.stage = "language"
         save_voice_state(state)
-        return (SCRIPT_HI["language"], False)
+        return ("Would you prefer to speak in Hindi or English?", False)
 
     # ── STAGE: language (caller chose language) ─────────────────────────────
     if state.stage == "language":

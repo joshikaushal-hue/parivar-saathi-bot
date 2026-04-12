@@ -29,7 +29,7 @@ from fastapi.responses import Response, JSONResponse, FileResponse
 from voice_agent import (
     init_call, get_opening_text, process_caller_response,
     text_to_speech, get_voice_state, delete_voice_state,
-    save_voice_state, REPROMPT,
+    save_voice_state, get_tts_language, REPROMPT, REPROMPT_EN,
 )
 from outcome_tracker import record_outcome, OUTCOME_NO_ANSWER
 from database import get_all_leads
@@ -53,15 +53,14 @@ GATHER_TIMEOUT = 5         # Seconds to wait for speech
 
 # ── TwiML helpers ────────────────────────────────────────────────────────────
 
-def _voice_twiml_say(text: str, gather: bool = True) -> str:
+def _voice_twiml_say(text: str, gather: bool = True, tts_lang: str = "en-IN") -> str:
     """
     Generate TwiML that either plays Sarvam TTS audio or falls back to Twilio <Say>.
 
-    If Sarvam TTS is available, generates audio and uses <Play>.
-    Otherwise, uses Twilio's built-in <Say> with an Indian English voice.
+    tts_lang: "en-IN" for English, "hi-IN" for Hindi.
     """
-    # Try Sarvam TTS first
-    audio_path = text_to_speech(text)
+    # Try Sarvam TTS first — pass language so it renders correctly
+    audio_path = text_to_speech(text, language=tts_lang)
 
     if audio_path and os.path.exists(audio_path):
         # Serve audio via our /voice/audio endpoint
@@ -96,6 +95,13 @@ def _voice_twiml_say(text: str, gather: bool = True) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+    # Pick correct Twilio voice based on language
+    if tts_lang == "en-IN":
+        say_voice = "Polly.Raveena"
+        say_lang = "en-IN"
+    else:
+        say_voice = "Polly.Aditi"
+        say_lang = "hi-IN"
 
     if gather:
         return (
@@ -104,7 +110,7 @@ def _voice_twiml_say(text: str, gather: bool = True) -> str:
             f'  <Gather input="speech" language="{SPEECH_LANGUAGE}" '
             f'speechTimeout="{SPEECH_TIMEOUT}" timeout="{GATHER_TIMEOUT}" '
             f'action="{BASE_URL}/voice/gather" method="POST">\n'
-            f'    <Say voice="Polly.Aditi" language="hi-IN">{safe_text}</Say>\n'
+            f'    <Say voice="{say_voice}" language="{say_lang}">{safe_text}</Say>\n'
             "  </Gather>\n"
             f'  <Redirect method="POST">{BASE_URL}/voice/gather</Redirect>\n'
             "</Response>"
@@ -113,7 +119,7 @@ def _voice_twiml_say(text: str, gather: bool = True) -> str:
         return (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             "<Response>\n"
-            f'  <Say voice="Polly.Aditi" language="hi-IN">{safe_text}</Say>\n'
+            f'  <Say voice="{say_voice}" language="{say_lang}">{safe_text}</Say>\n'
             "  <Hangup/>\n"
             "</Response>"
         )
@@ -158,9 +164,9 @@ async def voice_answer(request: Request):
             lead_score="Warm",
         )
 
-    # Get opening text and respond
+    # Get opening text and respond (opening is always English)
     opening = get_opening_text(state)
-    twiml = _voice_twiml_say(opening, gather=True)
+    twiml = _voice_twiml_say(opening, gather=True, tts_lang="en-IN")
 
     log.info(f"VOICE OUT | sid={call_sid} | opening={opening[:80]!r}")
     return _twiml_response(twiml)
@@ -191,9 +197,14 @@ async def voice_gather(request: Request):
         f"confidence={confidence}"
     )
 
-    # No speech detected — prompt again
+    # Look up state to get language for TTS
+    state = get_voice_state(call_sid)
+    tts_lang = get_tts_language(state) if state else "en-IN"
+
+    # No speech detected — prompt again (use correct language)
     if not speech_result:
-        twiml = _voice_twiml_say(REPROMPT, gather=True)
+        reprompt = REPROMPT_EN if tts_lang == "en-IN" else REPROMPT
+        twiml = _voice_twiml_say(reprompt, gather=True, tts_lang=tts_lang)
         return _twiml_response(twiml)
 
     # Process the caller's response (strict state machine, no OpenAI)
@@ -202,12 +213,16 @@ async def voice_gather(request: Request):
         caller_text=speech_result,
     )
 
+    # Re-fetch state after processing (language may have changed)
+    state = get_voice_state(call_sid)
+    tts_lang = get_tts_language(state) if state else "en-IN"
+
     log.info(
         f"VOICE OUT | sid={call_sid} | end={should_end} | "
-        f"reply={response_text[:80]!r}"
+        f"lang={tts_lang} | reply={response_text[:80]!r}"
     )
 
-    twiml = _voice_twiml_say(response_text, gather=not should_end)
+    twiml = _voice_twiml_say(response_text, gather=not should_end, tts_lang=tts_lang)
     return _twiml_response(twiml)
 
 
