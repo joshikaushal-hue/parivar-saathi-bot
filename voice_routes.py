@@ -29,7 +29,7 @@ from fastapi.responses import Response, JSONResponse, FileResponse
 from voice_agent import (
     init_call, get_opening_text, process_caller_response,
     text_to_speech, get_voice_state, delete_voice_state,
-    save_voice_state,
+    save_voice_state, REPROMPT,
 )
 from outcome_tracker import record_outcome, OUTCOME_NO_ANSWER
 from database import get_all_leads
@@ -193,8 +193,7 @@ async def voice_gather(request: Request):
 
     # No speech detected — prompt again
     if not speech_result:
-        reprompt = "मुझे सुनाई नहीं दिया। क्या आप दोबारा बोल सकते हैं?"
-        twiml = _voice_twiml_say(reprompt, gather=True)
+        twiml = _voice_twiml_say(REPROMPT, gather=True)
         return _twiml_response(twiml)
 
     # Get OpenAI client for dynamic responses
@@ -265,9 +264,9 @@ async def voice_status(request: Request):
 def _map_call_status_to_outcome(call_status: str, state) -> str:
     """Map Twilio call status to our outcome tags."""
     if call_status == "completed":
-        if state.stage == "ended" and state.last_objection == "not_interested":
-            return "not_interested"
-        return "follow_up"  # Completed call = at minimum a follow-up
+        if state.stage == "ended":
+            return "follow_up"
+        return "follow_up"
     if call_status in ("no-answer", "busy"):
         return "no_answer"
     if call_status in ("failed", "canceled"):
