@@ -230,8 +230,10 @@ class IVFConversationEngine:
             self.state.lead_score = classify_lead(self.state)
             self.state.closing_attempt_count = 1
             closing_msg = S5_CLOSING.get(self.state.lead_score, S5_CLOSING[LEAD_COLD])
-            action = next_action(self.state.lead_score)
-            return self._result(S5, closing_msg, self.state.lead_score, action)
+            # CRITICAL: Always use CONTINUE when first showing S5 closing.
+            # The action (transfer/end) is set AFTER the user responds in _handle_s5.
+            # Otherwise is_complete() fires early and session gets deleted.
+            return self._result(S5, closing_msg, self.state.lead_score, ACTION_CONTINUE)
 
         # Fall back to AI
         result = self._call_ai(user_input)
@@ -242,8 +244,7 @@ class IVFConversationEngine:
             self.state.lead_score = classify_lead(self.state)
             self.state.closing_attempt_count = 1
             closing_msg = S5_CLOSING.get(self.state.lead_score, S5_CLOSING[LEAD_COLD])
-            action = next_action(self.state.lead_score)
-            return self._result(S5, closing_msg, self.state.lead_score, action)
+            return self._result(S5, closing_msg, self.state.lead_score, ACTION_CONTINUE)
 
         return self._result(
             self.state.current_state,
