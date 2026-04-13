@@ -69,6 +69,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
         ("call_notes",      "TEXT"),
         ("state_reached",   "TEXT"),
         ("collected_data",  "TEXT"),
+        # Phase 3: Booking columns
+        ("booking_date",    "TEXT"),           # YYYY-MM-DD
+        ("booking_time",    "TEXT"),           # HH:MM (e.g. "11:00", "15:00")
+        ("booking_status",  "TEXT"),           # pending / confirmed / cancelled / completed
+        ("lead_priority",   "TEXT"),           # high / medium / low
+        ("intent_level",    "TEXT"),           # confirmed / exploring / vague
     ]
     for col, definition in new_cols:
         if col not in existing:

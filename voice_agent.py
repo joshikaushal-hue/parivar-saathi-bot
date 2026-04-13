@@ -52,6 +52,11 @@ CALL_FLOW = [
     "q2_treatment",
     "q3_age",
     "soft_close",
+    # Phase 3: Booking stages
+    "intent_check",
+    "slot_offer",
+    "slot_time",
+    "booking_confirm",
 ]
 
 # ── HINDI SCRIPT (EXACT — DO NOT MODIFY) ────────────────────────────────────
@@ -68,7 +73,17 @@ SCRIPT_HI = {
     "q3_age": "आपकी age क्या है?",
     "soft_close": (
         "ठीक है, आपके केस के हिसाब से एक detailed बात करना useful रहेगा। "
-        "क्या मैं आपकी काउंसलिंग के लिए एक कॉल arrange कर दूँ?"
+        "आप चाहें तो मैं आपके लिए एक काउंसलिंग slot check कर सकती हूँ।"
+    ),
+    # Phase 3: Booking stages
+    "intent_check": (
+        "आप seriously consult लेना चाहते हैं या सिर्फ़ information के लिए देख रहे हैं?"
+    ),
+    "slot_offer": "",  # dynamically generated based on priority
+    "slot_time": "सुबह 11 बजे ठीक रहेगा या दोपहर 3 बजे?",
+    "booking_confirm": (
+        "बहुत अच्छा। आपकी काउंसलिंग {day} {time} बुक हो गई है। "
+        "आपको WhatsApp पर details मिल जाएँगी।"
     ),
 }
 
@@ -86,7 +101,17 @@ SCRIPT_EN = {
     "q3_age": "What is your age?",
     "soft_close": (
         "Based on your case, a detailed discussion would be useful. "
-        "Can I arrange a counselling call for you?"
+        "I can check a counselling slot for you if you'd like."
+    ),
+    # Phase 3: Booking stages
+    "intent_check": (
+        "Would you like to actually consult a doctor, or are you just exploring options?"
+    ),
+    "slot_offer": "",  # dynamically generated based on priority
+    "slot_time": "Would 11 AM work, or 3 PM?",
+    "booking_confirm": (
+        "Your counselling is booked for {day} at {time}. "
+        "You'll receive details on WhatsApp."
     ),
 }
 
@@ -107,6 +132,16 @@ GOODBYE_NEGATIVE_HI = (
 )
 GOODBYE_DEFAULT_HI = "आपके समय के लिए धन्यवाद। अपना ख़्याल रखिए।"
 
+# Phase 3: Booking confirmation goodbye
+GOODBYE_BOOKED_HI = (
+    "बहुत अच्छा। आपकी काउंसलिंग {day} {time} बुक हो गई है। "
+    "आपको WhatsApp पर details मिल जाएँगी। अपना ख़्याल रखिए।"
+)
+GOODBYE_FOLLOW_UP_HI = (
+    "कोई बात नहीं। मैं आपको WhatsApp पर पूरी जानकारी भेज देती हूँ। "
+    "जब भी आप तैयार हों, बुक कर सकते हैं। अपना ख़्याल रखिए।"
+)
+
 # ── GOODBYE LINES (ENGLISH) ─────────────────────────────────────────────────
 
 GOODBYE_BUSY_EN = "No problem. We will call you back later. Take care."
@@ -123,6 +158,16 @@ GOODBYE_NEGATIVE_EN = (
     "You can reach us anytime on WhatsApp. Take care."
 )
 GOODBYE_DEFAULT_EN = "Thank you for your time. Take care."
+
+# Phase 3: Booking confirmation goodbye (English)
+GOODBYE_BOOKED_EN = (
+    "Your counselling is booked for {day} at {time}. "
+    "You'll receive details on WhatsApp. Take care."
+)
+GOODBYE_FOLLOW_UP_EN = (
+    "No problem. I will send you the details on WhatsApp. "
+    "You can book whenever you are ready. Take care."
+)
 
 # ── INTENT RESPONSES (language-locked) ───────────────────────────────────────
 
@@ -194,6 +239,14 @@ class VoiceCallState:
     collected_duration: str = ""
     collected_treatment: str = ""
     collected_age: str = ""
+
+    # Phase 3: Booking data
+    lead_priority: str = ""        # high / medium / low
+    intent_level: str = ""         # confirmed / exploring / vague
+    collected_slot_day: str = ""   # YYYY-MM-DD
+    collected_slot_time: str = ""  # HH:MM
+    available_slots: list = field(default_factory=list)  # cached slots from booking engine
+    booking_done: bool = False     # True after successful booking
 
 
 # In-memory voice call states (keyed by call_sid)
@@ -482,19 +535,199 @@ def process_caller_response(
         filler = _get_filler(state)
         return (f"{filler} {script['soft_close']}", False)
 
-    # ── STAGE: soft_close (counselling offer) ───────────────────────────────
+    # ── STAGE: soft_close (counselling offer → leads to booking) ─────────
     if state.stage == "soft_close":
+        if _is_positive_response(caller_text):
+            # Positive → move to intent validation (don't book yet)
+            state.stage = "intent_check"
+            save_voice_state(state)
+            return (script["intent_check"], False)
+        else:
+            # Negative → WhatsApp follow-up, end call
+            state.stage = "ended"
+            save_voice_state(state)
+            if state.language == "en":
+                return (GOODBYE_FOLLOW_UP_EN.format(day="", time=""), True)
+            return (GOODBYE_FOLLOW_UP_HI.format(day="", time=""), True)
+
+    # ── STAGE: intent_check (filter serious vs casual) ────────────────────
+    if state.stage == "intent_check":
+        intent = _classify_intent(caller_text)
+        state.intent_level = intent
+
+        if intent == "vague":
+            # Not serious → WhatsApp info, end call gracefully
+            state.stage = "ended"
+            save_voice_state(state)
+            if state.language == "en":
+                return (GOODBYE_FOLLOW_UP_EN.format(day="", time=""), True)
+            return (GOODBYE_FOLLOW_UP_HI.format(day="", time=""), True)
+
+        # confirmed or exploring → calculate priority and offer slot
+        from booking import calculate_lead_priority, get_slot_offer_text
+
+        state.lead_priority = calculate_lead_priority(
+            age=state.collected_age or state.age,
+            duration_months=_parse_duration_months(state.collected_duration) or state.duration_months,
+            treatment_history=state.collected_treatment or state.treatment_history,
+        )
+
+        slot_text, slots = get_slot_offer_text(state.lead_priority, state.language)
+        state.available_slots = slots
+        state.stage = "slot_offer"
+        save_voice_state(state)
+
+        log.info(
+            f"BOOKING FLOW | sid={call_sid} | intent={intent} | "
+            f"priority={state.lead_priority} | slots={len(slots)}"
+        )
+        return (slot_text, False)
+
+    # ── STAGE: slot_offer (caller picks day) ──────────────────────────────
+    if state.stage == "slot_offer":
+        if _is_negative_response(caller_text):
+            # Don't want to book now → follow-up
+            state.stage = "ended"
+            save_voice_state(state)
+            if state.language == "en":
+                return (GOODBYE_FOLLOW_UP_EN.format(day="", time=""), True)
+            return (GOODBYE_FOLLOW_UP_HI.format(day="", time=""), True)
+
+        # Parse day preference
+        chosen_day = _parse_slot_day(caller_text, state.available_slots)
+        state.collected_slot_day = chosen_day
+
+        # Also check if they mentioned a time in the same response
+        chosen_time = ""
+        t = caller_text.lower()
+        if any(w in t for w in _TIME_MORNING_WORDS) or any(w in t for w in _TIME_AFTERNOON_WORDS):
+            chosen_time = _parse_slot_time(caller_text)
+            state.collected_slot_time = chosen_time
+
+        if chosen_time:
+            # They gave both day and time — skip to confirm
+            state.stage = "booking_confirm"
+            save_voice_state(state)
+            return _do_booking_confirm(state, call_sid)
+
+        # Ask for time preference
+        state.stage = "slot_time"
+        save_voice_state(state)
+        return (script["slot_time"], False)
+
+    # ── STAGE: slot_time (caller picks time) ──────────────────────────────
+    if state.stage == "slot_time":
+        state.collected_slot_time = _parse_slot_time(caller_text)
+        state.stage = "booking_confirm"
+        save_voice_state(state)
+        return _do_booking_confirm(state, call_sid)
+
+    # ── STAGE: booking_confirm (already handled by _do_booking_confirm) ───
+    if state.stage == "booking_confirm":
+        # If we somehow land here (shouldn't), end gracefully
         state.stage = "ended"
         save_voice_state(state)
-        if _is_positive_response(caller_text):
-            return (_get_goodbye("positive", state), True)
-        else:
-            return (_get_goodbye("negative", state), True)
+        return (_get_goodbye("default", state), True)
 
     # Fallback
     state.stage = "ended"
     save_voice_state(state)
     return (_get_goodbye("default", state), True)
+
+
+# ── Phase 3: Booking confirmation helper ─────────────────────────────────────
+
+def _do_booking_confirm(state: VoiceCallState, call_sid: str) -> tuple:
+    """
+    Create the booking and return the confirmation text.
+    Returns: (response_text, should_end_call=True)
+    """
+    from booking import create_booking, send_whatsapp_confirmation
+
+    day = state.collected_slot_day
+    time_slot = state.collected_slot_time
+
+    # Create booking in DB
+    booking_ok = create_booking(
+        session_id=state.session_id,
+        phone=state.phone,
+        booking_date=day,
+        booking_time=time_slot,
+        lead_priority=state.lead_priority,
+        intent_level=state.intent_level,
+    )
+
+    if booking_ok:
+        state.booking_done = True
+        save_voice_state(state)
+
+        # Send WhatsApp confirmation (async, non-blocking)
+        try:
+            send_whatsapp_confirmation(
+                phone=state.phone,
+                booking_date=day,
+                booking_time=time_slot,
+                language=state.language,
+            )
+        except Exception as e:
+            log.warning(f"WA confirm failed (non-blocking): {e}")
+
+    # Build day/time labels for speech
+    if state.language == "en":
+        from booking import _day_label_en, _time_label_en
+        from datetime import datetime
+        try:
+            dt = datetime.strptime(day, "%Y-%m-%d")
+            day_label = _day_label_en(datetime.now(), dt)
+        except ValueError:
+            day_label = day
+        time_label = _time_label_en(time_slot)
+        goodbye = GOODBYE_BOOKED_EN.format(day=day_label, time=time_label)
+    else:
+        from booking import _day_label_hi, _time_label_hi
+        from datetime import datetime
+        try:
+            dt = datetime.strptime(day, "%Y-%m-%d")
+            day_label = _day_label_hi(datetime.now(), dt)
+        except ValueError:
+            day_label = day
+        time_label = _time_label_hi(time_slot)
+        goodbye = GOODBYE_BOOKED_HI.format(day=day_label, time=time_label)
+
+    log.info(
+        f"BOOKING DONE | sid={call_sid} | session={state.session_id} | "
+        f"date={day} | time={time_slot} | priority={state.lead_priority}"
+    )
+
+    state.stage = "ended"
+    save_voice_state(state)
+    return (goodbye, True)
+
+
+def _parse_duration_months(duration_text: str) -> Optional[float]:
+    """Parse duration text to months. E.g., '2 years' → 24, '6 months' → 6."""
+    if not duration_text:
+        return None
+    import re
+    t = duration_text.lower()
+
+    # Try to find "X year" patterns
+    year_match = re.search(r"(\d+)\s*(?:year|saal|sal|yr)", t)
+    if year_match:
+        return float(year_match.group(1)) * 12
+
+    # Try "X month" patterns
+    month_match = re.search(r"(\d+)\s*(?:month|mahine|mahina|mah)", t)
+    if month_match:
+        return float(month_match.group(1))
+
+    # Just a number — assume months if < 10, years if >= 10
+    num_match = re.search(r"(\d+)", t)
+    if num_match:
+        n = int(num_match.group(1))
+        return n * 12 if n < 10 else float(n)
+
+    return None
 
 
 # ── Response classifiers ─────────────────────────────────────────────────────
@@ -529,6 +762,37 @@ _SEND_DETAILS_WORDS = {
     "details send", "send info", "whatsapp bhejo",
 }
 
+# Phase 3: Intent classification keywords
+_INTENT_CONFIRMED_WORDS = {
+    "yes", "haan", "ji", "bilkul", "zaroor", "consult", "doctor",
+    "seriously", "book", "appointment", "ready", "tayyar",
+    "chahiye", "karna hai", "definitely", "sure",
+    "please book", "book karo", "haan ji", "jaroor",
+}
+_INTENT_VAGUE_WORDS = {
+    "dekhte hain", "sochenge", "baad mein", "maybe", "not sure",
+    "info chahiye", "sirf info", "just information", "exploring",
+    "just asking", "pata karna tha", "dekhna tha", "soochte hain",
+    "abhi nahi", "pata nahi", "let me think",
+}
+
+# Phase 3: Slot day parsing keywords
+_DAY_TOMORROW_WORDS = {
+    "kal", "tomorrow", "next day", "agla din", "kal ka",
+}
+_DAY_AFTER_TOMORROW_WORDS = {
+    "parson", "parso", "day after", "day after tomorrow",
+    "uske baad", "agla",
+}
+_TIME_MORNING_WORDS = {
+    "11", "morning", "subah", "gyarah", "eleven", "11 am",
+    "subah ka", "morning time",
+}
+_TIME_AFTERNOON_WORDS = {
+    "3", "afternoon", "dopahar", "teen", "three", "3 pm",
+    "dopahar ka", "afternoon time", "15",
+}
+
 
 def _is_positive_response(text: str) -> bool:
     return any(w in text.lower() for w in _POSITIVE_WORDS)
@@ -548,3 +812,57 @@ def _is_send_details(text: str) -> bool:
 
 def _is_not_interested(text: str) -> bool:
     return any(w in text.lower() for w in _NOT_INTERESTED_WORDS)
+
+
+def _classify_intent(text: str) -> str:
+    """
+    Classify booking intent: 'confirmed', 'exploring', or 'vague'.
+    IMPORTANT: Check vague FIRST — people who say "sirf info" or "dekhte hain"
+    should NOT be booked even if other positive words match.
+    """
+    t = text.lower()
+    # Check vague/exploring signals FIRST (higher priority)
+    if any(w in t for w in _INTENT_VAGUE_WORDS):
+        return "vague"
+    if any(w in t for w in _INTENT_CONFIRMED_WORDS):
+        return "confirmed"
+    # If positive general response, treat as confirmed
+    if _is_positive_response(text):
+        return "confirmed"
+    return "exploring"
+
+
+def _parse_slot_day(text: str, available_slots: list) -> str:
+    """Parse caller's day preference into a YYYY-MM-DD date."""
+    t = text.lower()
+
+    if any(w in t for w in _DAY_TOMORROW_WORDS):
+        # Find first slot that is tomorrow
+        from datetime import datetime, timedelta
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        for slot in available_slots:
+            if slot["date"] == tomorrow:
+                return tomorrow
+
+    if any(w in t for w in _DAY_AFTER_TOMORROW_WORDS):
+        from datetime import datetime, timedelta
+        day_after = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d")
+        for slot in available_slots:
+            if slot["date"] == day_after:
+                return day_after
+
+    # Default: return first available slot's date
+    if available_slots:
+        return available_slots[0]["date"]
+    return ""
+
+
+def _parse_slot_time(text: str) -> str:
+    """Parse caller's time preference into HH:MM format."""
+    t = text.lower()
+    if any(w in t for w in _TIME_MORNING_WORDS):
+        return "11:00"
+    if any(w in t for w in _TIME_AFTERNOON_WORDS):
+        return "15:00"
+    # Default to morning
+    return "11:00"

@@ -257,10 +257,22 @@ async def voice_status(request: Request):
     if call_status in ("completed", "busy", "no-answer", "failed", "canceled"):
         if state:
             outcome = _map_call_status_to_outcome(call_status, state)
-            record_outcome(state.session_id, outcome, f"Voice call {call_status}")
+            # Phase 3: Include booking info in call notes
+            call_notes = f"Voice call {call_status}"
+            if hasattr(state, 'booking_done') and state.booking_done:
+                call_notes = (
+                    f"Voice call {call_status} — BOOKED: "
+                    f"{state.collected_slot_day} at {state.collected_slot_time} "
+                    f"(priority: {state.lead_priority})"
+                )
+            elif hasattr(state, 'intent_level') and state.intent_level:
+                call_notes = f"Voice call {call_status} — intent: {state.intent_level}"
+
+            record_outcome(state.session_id, outcome, call_notes)
             log.info(
                 f"VOICE END | sid={call_sid} | session={state.session_id} | "
-                f"outcome={outcome} | duration={duration}s"
+                f"outcome={outcome} | duration={duration}s | "
+                f"booked={getattr(state, 'booking_done', False)}"
             )
             delete_voice_state(call_sid)
 
@@ -268,8 +280,13 @@ async def voice_status(request: Request):
 
 
 def _map_call_status_to_outcome(call_status: str, state) -> str:
-    """Map Twilio call status to our outcome tags."""
+    """Map Twilio call status + voice state to our outcome tags."""
     if call_status == "completed":
+        # Phase 3: Check if booking was made during the call
+        if hasattr(state, 'booking_done') and state.booking_done:
+            return "booked"
+        if hasattr(state, 'intent_level') and state.intent_level == "vague":
+            return "follow_up"
         if state.stage == "ended":
             return "follow_up"
         return "follow_up"

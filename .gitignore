@@ -17,3 +17,9 @@ logs/
 
 # Sessions file
 sessions.json
+
+# FUSE mount artifacts
+.fuse_hidden*
+
+# TTS cache
+ivf_voice_cache/

@@ -496,6 +496,37 @@ async def conversion_metrics(date: Optional[str] = None):
         raise HTTPException(status_code=500, detail="Could not compute metrics")
 
 
+# ── GET /bookings ──────────────────────────────────────────────────────────────
+
+@app.get("/bookings")
+async def bookings_view(
+    status: Optional[str] = None,
+    date:   Optional[str] = None,
+):
+    """
+    Phase 3: View all appointment bookings.
+
+    Optional query params:
+        ?status=confirmed     filter by booking status
+        ?date=2026-04-15      filter by booking date (YYYY-MM-DD)
+
+    Valid statuses: pending | confirmed | cancelled | completed
+
+    Returns booking details: phone, date, time, priority, status, lead data.
+    """
+    try:
+        from booking import get_all_bookings
+        bookings = get_all_bookings(status=status, date=date)
+        return JSONResponse({
+            "total":    len(bookings),
+            "filters":  {"status": status, "date": date},
+            "bookings": bookings,
+        })
+    except Exception as exc:
+        log.error(f"/bookings error: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Could not fetch bookings")
+
+
 # ── GET /health ────────────────────────────────────────────────────────────────
 
 @app.get("/health")
