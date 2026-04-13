@@ -193,3 +193,19 @@ def get_all_leads(
         leads.append(d)
 
     return leads
+
+
+def has_completed_lead(phone: str) -> bool:
+    """
+    Check if a completed/transferred lead already exists for this phone number.
+    Used to prevent restarting intake when user sends post-completion messages.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        row = conn.execute(
+            "SELECT id FROM leads WHERE phone = ? AND status IN ('transferred', 'completed', 'call_scheduled') ORDER BY created_at DESC LIMIT 1",
+            (phone,)
+        ).fetchone()
+    finally:
+        conn.close()
+    return row is not None

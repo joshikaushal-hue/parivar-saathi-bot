@@ -38,7 +38,7 @@ from state_machine import (
     S1, S2, S3, S4, S5, S6,
     ACTION_END, ACTION_TRANSFER, ACTION_CONTINUE,
 )
-from database import init_db, upsert_lead, get_all_leads
+from database import init_db, upsert_lead, get_all_leads, has_completed_lead
 from sessions import (
     load_state, save_state, delete_session, active_session_count
 )
@@ -333,6 +333,18 @@ async def whatsapp_webhook(request: Request):
 
     # ── Session key: derived from phone number (stable across restarts) ────────
     session_id = "wa_" + from_number.replace("+", "").replace(":", "_")
+
+    # ── Guard: post-completion messages (e.g. "thanks", "ok") ────────────
+    # If no active session exists (state is fresh S1) and this phone already
+    # has a completed lead, don't restart intake — send a graceful acknowledgment.
+    existing_state = load_state(session_id)
+    if existing_state.current_state == S1 and existing_state.turn_count == 0 and has_completed_lead(from_number):
+        log.info(f"/whatsapp: post-completion message from {from_number}: {body[:50]!r}")
+        return _twiml(
+            "Thank you for connecting with Parivar Saathi! "
+            "Our counselor will reach out to you soon. "
+            "If you have any questions, feel free to message us anytime."
+        )
 
     try:
         engine = _build_engine(session_id)

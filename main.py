@@ -102,8 +102,16 @@ class IVFConversationEngine:
 
     # ── State handlers ───────────────────────────────────────────────────────
 
+    # ── Fixed welcome message (no AI needed for S1) ────────────────────────
+    WELCOME_MESSAGE = (
+        "Welcome to Parivar Saathi! "
+        "We help couples with expert fertility guidance. "
+        "I just have 3 quick questions to understand your situation better.\n\n"
+        "How long have you been trying to conceive — months or years?"
+    )
+
     def _handle_s1(self, user_input: str) -> dict:
-        """S1: Check consent. If user refuses → end. Otherwise → S2."""
+        """S1: Welcome + directly ask first question. Skip consent step."""
         if is_s1_refusal(user_input):
             self.state.current_state = S1
             self.state.action = ACTION_END
@@ -114,24 +122,10 @@ class IVFConversationEngine:
                 ACTION_END,
             )
 
-        # Use AI to generate a natural S1 response
-        S1_FALLBACK = (
-            "Hi! I'm the Parivar Saathi assistant. "
-            "I have 3 quick questions to understand how we can help. "
-            "How long have you been trying to conceive?"
-        )
-        result = self._call_ai(user_input)
-
-        # Always advance to S2 on non-refusal
+        # Always advance to S2 with fixed welcome message (no AI call needed)
         self.state.current_state = S2
         self.state.action = ACTION_CONTINUE
-
-        response_text = result.get("response_text", S1_FALLBACK)
-        # If AI returned a generic fallback, use our branded one instead
-        if response_text == "Could you repeat that?":
-            response_text = S1_FALLBACK
-
-        return self._result(S2, response_text, LEAD_COLD, ACTION_CONTINUE)
+        return self._result(S2, self.WELCOME_MESSAGE, LEAD_COLD, ACTION_CONTINUE)
 
     def _handle_s2(self, user_input: str) -> dict:
         """S2: Extract duration. If captured → S3. If bare number → wait for unit."""
