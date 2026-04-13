@@ -661,7 +661,7 @@ def _do_booking_confirm(state: VoiceCallState, call_sid: str) -> tuple:
         state.booking_done = True
         save_voice_state(state)
 
-        # Send WhatsApp confirmation (async, non-blocking)
+        # Send WhatsApp confirmation to patient (non-blocking)
         try:
             send_whatsapp_confirmation(
                 phone=state.phone,
@@ -671,6 +671,24 @@ def _do_booking_confirm(state: VoiceCallState, call_sid: str) -> tuple:
             )
         except Exception as e:
             log.warning(f"WA confirm failed (non-blocking): {e}")
+
+        # Notify counselor about new booking (non-blocking)
+        try:
+            from booking import notify_counselor
+            notify_counselor(
+                session_id=state.session_id,
+                phone=state.phone,
+                booking_date=day,
+                booking_time=time_slot,
+                lead_priority=state.lead_priority,
+                collected_data={
+                    "age": state.collected_age or state.age,
+                    "duration_months": _parse_duration_months(state.collected_duration) or state.duration_months,
+                    "treatment_history": state.collected_treatment or state.treatment_history,
+                },
+            )
+        except Exception as e:
+            log.warning(f"Counselor notify failed (non-blocking): {e}")
 
     # Build day/time labels for speech
     if state.language == "en":

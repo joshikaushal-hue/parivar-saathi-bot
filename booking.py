@@ -361,6 +361,110 @@ def send_whatsapp_confirmation(
         return False
 
 
+# ── Counselor Notification ───────────────────────────────────────────────────
+
+def notify_counselor(
+    session_id: str,
+    phone: str,
+    booking_date: str,
+    booking_time: str,
+    lead_priority: str,
+    collected_data: Optional[dict] = None,
+) -> bool:
+    """
+    Send WhatsApp/SMS alert to the counselor when a new booking is created.
+    Uses COUNSELOR_PHONE env var as the destination.
+
+    Returns True on success, False on failure (non-blocking).
+    """
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+    from_number = os.environ.get("TWILIO_WHATSAPP_NUMBER", "")
+    counselor_phone = os.environ.get("COUNSELOR_PHONE", "")
+
+    if not counselor_phone:
+        log.warning("Counselor notification skipped — COUNSELOR_PHONE not set")
+        return False
+
+    if not all([account_sid, auth_token, from_number]):
+        log.warning("Counselor notification skipped — Twilio not configured")
+        return False
+
+    # Format the date for display
+    try:
+        dt = datetime.strptime(booking_date, "%Y-%m-%d")
+        date_display = dt.strftime("%A, %d %B %Y")
+    except ValueError:
+        date_display = booking_date
+
+    time_display = _time_label_en(booking_time)
+
+    # Build lead summary from collected data
+    cd = collected_data or {}
+    age = cd.get("age", "N/A")
+    duration = cd.get("duration_months", "N/A")
+    treatment = cd.get("treatment_history", "N/A")
+
+    # Priority emoji for quick scanning
+    priority_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(lead_priority, "⚪")
+
+    message = (
+        f"{priority_icon} *NEW BOOKING — {lead_priority.upper()} PRIORITY*\n\n"
+        f"Patient: {phone}\n"
+        f"Date: {date_display}\n"
+        f"Time: {time_display}\n\n"
+        f"*Lead Profile:*\n"
+        f"Age: {age}\n"
+        f"Trying: {duration} months\n"
+        f"Treatment: {treatment}\n"
+        f"Session: {session_id}\n\n"
+        f"_Booked via AI voice call_"
+    )
+
+    # Clean counselor phone
+    clean_counselor = counselor_phone.strip()
+    if not clean_counselor.startswith("+"):
+        clean_counselor = f"+{clean_counselor}"
+
+    try:
+        from twilio.rest import Client as TwilioClient
+        client = TwilioClient(account_sid, auth_token)
+
+        # Try WhatsApp first
+        wa_from = from_number if from_number.startswith("whatsapp:") else f"whatsapp:{from_number}"
+        wa_to = f"whatsapp:{clean_counselor}"
+
+        msg = client.messages.create(
+            to=wa_to,
+            from_=wa_from,
+            body=message,
+        )
+        log.info(f"COUNSELOR NOTIFIED | to={wa_to} | sid={msg.sid} | priority={lead_priority}")
+        return True
+
+    except ImportError:
+        log.error("Counselor notification failed: twilio package not installed")
+        return False
+    except Exception as e:
+        log.error(f"Counselor notification failed: {e}", exc_info=True)
+        # Fallback: try SMS if WhatsApp fails
+        try:
+            twilio_sms_from = os.environ.get("TWILIO_PHONE_NUMBER", "")
+            if twilio_sms_from:
+                from twilio.rest import Client as TwilioClient
+                client = TwilioClient(account_sid, auth_token)
+                msg = client.messages.create(
+                    to=clean_counselor,
+                    from_=twilio_sms_from,
+                    body=message.replace("*", "").replace("_", ""),  # strip markdown for SMS
+                )
+                log.info(f"COUNSELOR SMS SENT | to={clean_counselor} | sid={msg.sid}")
+                return True
+        except Exception as sms_err:
+            log.error(f"Counselor SMS fallback also failed: {sms_err}")
+        return False
+
+
 # ── Get All Bookings ────────────────────────────────────────────────────────
 
 def get_all_bookings(
@@ -407,6 +511,107 @@ def get_all_bookings(
         bookings.append(d)
 
     return bookings
+
+
+# ── Appointment Reminders ───────────────────────────────────────────────────
+
+def send_appointment_reminders(hours_before: int = 3) -> list:
+    """
+    Send WhatsApp reminders for appointments happening in the next N hours.
+    Called by a cron/scheduled endpoint (e.g., GET /reminders/send).
+
+    Returns list of session_ids that were sent reminders.
+    """
+    from datetime import timedelta
+
+    now = datetime.now()
+    reminder_window_start = now + timedelta(hours=hours_before - 1)
+    reminder_window_end = now + timedelta(hours=hours_before + 1)
+
+    # Find bookings within the reminder window
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT session_id, phone, booking_date, booking_time, booking_status,
+                   lead_priority, collected_data
+              FROM leads
+             WHERE booking_status = 'confirmed'
+               AND booking_date IS NOT NULL
+               AND booking_time IS NOT NULL
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    sent = []
+    for row in rows:
+        d = dict(row)
+        try:
+            appt_dt = datetime.strptime(f"{d['booking_date']} {d['booking_time']}", "%Y-%m-%d %H:%M")
+        except ValueError:
+            continue
+
+        # Check if appointment is within the reminder window
+        if reminder_window_start <= appt_dt <= reminder_window_end:
+            phone = d.get("phone", "")
+            if not phone:
+                continue
+
+            success = _send_reminder_message(
+                phone=phone,
+                booking_date=d["booking_date"],
+                booking_time=d["booking_time"],
+            )
+            if success:
+                sent.append(d["session_id"])
+                log.info(f"REMINDER SENT | session={d['session_id']} | phone={phone}")
+
+    return sent
+
+
+def _send_reminder_message(phone: str, booking_date: str, booking_time: str) -> bool:
+    """Send a single reminder WhatsApp message."""
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+    from_number = os.environ.get("TWILIO_WHATSAPP_NUMBER", "")
+
+    if not all([account_sid, auth_token, from_number]):
+        return False
+
+    try:
+        dt = datetime.strptime(booking_date, "%Y-%m-%d")
+        date_display = dt.strftime("%A, %d %B")
+    except ValueError:
+        date_display = booking_date
+
+    time_display = _time_label_en(booking_time)
+    time_display_hi = _time_label_hi(booking_time)
+
+    message = (
+        f"*परिवार साथी — अपॉइंटमेंट रिमाइंडर*\n\n"
+        f"नमस्ते! आपकी काउंसलिंग अपॉइंटमेंट आज {time_display_hi} है।\n\n"
+        f"हमारे काउंसलर आपको कॉल करेंगे।\n"
+        f"कृपया अपना फ़ोन पास रखें।\n\n"
+        f"_Reminder: Your counselling appointment is today at {time_display}._\n\n"
+        f"अपना ख़्याल रखिए।"
+    )
+
+    clean_phone = phone.replace("whatsapp:", "").strip()
+    if not clean_phone.startswith("+"):
+        clean_phone = f"+{clean_phone}"
+    wa_to = f"whatsapp:{clean_phone}"
+
+    try:
+        from twilio.rest import Client as TwilioClient
+        client = TwilioClient(account_sid, auth_token)
+        wa_from = from_number if from_number.startswith("whatsapp:") else f"whatsapp:{from_number}"
+        client.messages.create(to=wa_to, from_=wa_from, body=message)
+        return True
+    except Exception as e:
+        log.error(f"Reminder send failed for {phone}: {e}")
+        return False
 
 
 # ── Internal Helpers ────────────────────────────────────────────────────────

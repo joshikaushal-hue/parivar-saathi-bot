@@ -49,6 +49,7 @@ from outcome_tracker import (
 )
 from lead_scorer import score_lead
 from voice_routes import router as voice_router, auto_trigger_call_if_priority_1
+from dashboard import router as dashboard_router
 
 load_dotenv()
 
@@ -110,6 +111,9 @@ app.add_middleware(RequestLoggingMiddleware)
 
 # ── Voice call routes ────────────────────────────────────────────────────────
 app.include_router(voice_router)
+
+# ── Dashboard routes ─────────────────────────────────────────────────────────
+app.include_router(dashboard_router)
 
 
 # ── Duplicate-message guard (in-memory; bounded to 10 000 entries) ────────────
@@ -525,6 +529,34 @@ async def bookings_view(
     except Exception as exc:
         log.error(f"/bookings error: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail="Could not fetch bookings")
+
+
+# ── GET /reminders/send ────────────────────────────────────────────────────────
+
+@app.get("/reminders/send")
+async def send_reminders(hours_before: int = 3):
+    """
+    Trigger appointment reminders for bookings happening in the next N hours.
+
+    Call this from a cron job (e.g., every hour) or manually.
+    Default: sends reminders for appointments 3 hours from now.
+
+    Usage:
+        GET /reminders/send              — default 3 hours
+        GET /reminders/send?hours_before=2  — 2 hours before
+    """
+    try:
+        from booking import send_appointment_reminders
+        sent = send_appointment_reminders(hours_before=hours_before)
+        return JSONResponse({
+            "status": "ok",
+            "reminders_sent": len(sent),
+            "sessions": sent,
+            "hours_before": hours_before,
+        })
+    except Exception as exc:
+        log.error(f"/reminders/send error: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Could not send reminders")
 
 
 # ── GET /health ────────────────────────────────────────────────────────────────
