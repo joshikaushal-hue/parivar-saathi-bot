@@ -58,7 +58,13 @@ def _voice_twiml_say(text: str, gather: bool = True, tts_lang: str = "en-IN") ->
     Generate TwiML that either plays Sarvam TTS audio or falls back to Twilio <Say>.
 
     tts_lang: "en-IN" for English, "hi-IN" for Hindi.
+    Speech recognition language now MATCHES tts_lang so Twilio ASR
+    uses the correct model (en-IN for English users, hi-IN for Hindi).
     """
+    # Speech recognition language = same as TTS language
+    # This ensures "yes" is transcribed as "yes" (not Hindi Devanagari)
+    speech_lang = tts_lang  # "en-IN" or "hi-IN"
+
     # Try Sarvam TTS first — pass language so it renders correctly
     audio_path = text_to_speech(text, language=tts_lang)
 
@@ -71,7 +77,7 @@ def _voice_twiml_say(text: str, gather: bool = True, tts_lang: str = "en-IN") ->
             return (
                 '<?xml version="1.0" encoding="UTF-8"?>\n'
                 "<Response>\n"
-                f'  <Gather input="speech" language="{SPEECH_LANGUAGE}" '
+                f'  <Gather input="speech" language="{speech_lang}" '
                 f'speechTimeout="{SPEECH_TIMEOUT}" timeout="{GATHER_TIMEOUT}" '
                 f'action="{BASE_URL}/voice/gather" method="POST">\n'
                 f"    <Play>{audio_url}</Play>\n"
@@ -107,7 +113,7 @@ def _voice_twiml_say(text: str, gather: bool = True, tts_lang: str = "en-IN") ->
         return (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             "<Response>\n"
-            f'  <Gather input="speech" language="{SPEECH_LANGUAGE}" '
+            f'  <Gather input="speech" language="{speech_lang}" '
             f'speechTimeout="{SPEECH_TIMEOUT}" timeout="{GATHER_TIMEOUT}" '
             f'action="{BASE_URL}/voice/gather" method="POST">\n'
             f'    <Say voice="{say_voice}" language="{say_lang}">{safe_text}</Say>\n'

@@ -537,18 +537,18 @@ def process_caller_response(
 
     # ── STAGE: soft_close (counselling offer → leads to booking) ─────────
     if state.stage == "soft_close":
-        if _is_positive_response(caller_text):
-            # Positive → move to intent validation (don't book yet)
-            state.stage = "intent_check"
-            save_voice_state(state)
-            return (script["intent_check"], False)
-        else:
-            # Negative → WhatsApp follow-up, end call
+        if _is_negative_response(caller_text):
+            # Clearly negative → WhatsApp follow-up, end call
             state.stage = "ended"
             save_voice_state(state)
             if state.language == "en":
                 return (GOODBYE_FOLLOW_UP_EN.format(day="", time=""), True)
             return (GOODBYE_FOLLOW_UP_HI.format(day="", time=""), True)
+        # Positive OR ambiguous → move to intent validation (benefit of the doubt)
+        # This ensures "yes" / "ok" / any non-negative response proceeds to booking
+        state.stage = "intent_check"
+        save_voice_state(state)
+        return (script["intent_check"], False)
 
     # ── STAGE: intent_check (filter serious vs casual) ────────────────────
     if state.stage == "intent_check":
@@ -755,11 +755,16 @@ _POSITIVE_WORDS = {
     "haan", "haa", "ji", "theek", "bilkul", "zaroor",
     "please", "go ahead", "sounds good", "that works",
     "morning", "evening", "afternoon", "chalo", "kar do",
+    # Hindi Devanagari (Twilio hi-IN ASR may transcribe in script)
+    "हाँ", "हां", "हा", "जी", "ठीक", "बिल्कुल", "ज़रूर", "जरूर",
+    "चलो", "कर दो", "हाँ जी", "जी हाँ", "ठीक है",
 }
 
 _NEGATIVE_WORDS = {
     "no", "nope", "nahi", "na", "not now", "later",
     "not today", "abhi nahi", "baad mein",
+    # Hindi Devanagari
+    "नहीं", "ना", "नही", "अभी नहीं", "बाद में",
 }
 
 _NOT_INTERESTED_WORDS = {
@@ -786,6 +791,9 @@ _INTENT_CONFIRMED_WORDS = {
     "seriously", "book", "appointment", "ready", "tayyar",
     "chahiye", "karna hai", "definitely", "sure",
     "please book", "book karo", "haan ji", "jaroor",
+    # Hindi Devanagari
+    "हाँ", "हां", "जी", "बिल्कुल", "ज़रूर", "जरूर", "तैयार",
+    "चाहिए", "करना है", "हाँ जी", "जी हाँ", "बुक करो",
 }
 _INTENT_VAGUE_WORDS = {
     "dekhte hain", "sochenge", "baad mein", "maybe", "not sure",
