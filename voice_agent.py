@@ -77,7 +77,7 @@ SCRIPT_HI = {
     ),
     # Phase 3: Booking stages
     "intent_check": (
-        "आप seriously consult लेना चाहते हैं या सिर्फ़ information के लिए देख रहे हैं?"
+        "क्या आप seriously आगे बढ़ना चाहते हैं या सिर्फ़ information के लिए देख रहे हैं?"
     ),
     "slot_offer": "",  # dynamically generated based on priority
     "slot_time": "सुबह 11 बजे ठीक रहेगा या दोपहर 3 बजे?",
@@ -105,7 +105,7 @@ SCRIPT_EN = {
     ),
     # Phase 3: Booking stages
     "intent_check": (
-        "Would you like to actually consult a doctor, or are you just exploring options?"
+        "Would you like to go ahead with a counselling session, or are you just exploring options?"
     ),
     "slot_offer": "",  # dynamically generated based on priority
     "slot_time": "Would 11 AM work, or 3 PM?",
@@ -787,7 +787,7 @@ _SEND_DETAILS_WORDS = {
 
 # Phase 3: Intent classification keywords
 _INTENT_CONFIRMED_WORDS = {
-    "yes", "haan", "ji", "bilkul", "zaroor", "consult", "doctor",
+    "yes", "haan", "ji", "bilkul", "zaroor", "counselling", "counsellor",
     "seriously", "book", "appointment", "ready", "tayyar",
     "chahiye", "karna hai", "definitely", "sure",
     "please book", "book karo", "haan ji", "jaroor",

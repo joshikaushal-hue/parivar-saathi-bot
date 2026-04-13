@@ -86,8 +86,8 @@ S5_CLOSING = {
         "Our counselor can call you — morning or evening?"
     ),
     LEAD_WARM: (
-        "At this stage, a consultation gives you clarity — not commitment. "
-        "Our counselor can reach you shortly. Does that work?"
+        "At this stage, a counselling session gives you clarity — not commitment. "
+        "Our counsellor can reach you shortly. Does that work?"
     ),
     LEAD_COLD: (
         "You're still early in the journey — many couples conceive naturally. "
@@ -235,8 +235,8 @@ STATE_SYSTEM_PROMPTS = {
     S5: (
         "You are an IVF intake assistant. State S5 — Closing. "
         "The lead_score is provided in context. Use EXACTLY one of these lines, verbatim:\n"
-        "Hot  → 'We recommend scheduling a consultation soon. Would you prefer morning or evening?'\n"
-        "Warm → 'A consultation can help clarify next steps. Our counselor can call you shortly.'\n"
+        "Hot  → 'We recommend scheduling a counselling session soon. Would you prefer morning or evening?'\n"
+        "Warm → 'A counselling session can help clarify next steps. Our counsellor will connect with you to take it forward.'\n"
         "Cold → 'It's still early days — many conceive naturally within the first year. We're here when you need us.'\n"
         "Do NOT add anything before or after. Do NOT paraphrase. Do NOT ask a follow-up. "
         "BANNED: 'How can I assist', 'Let's talk further', 'Thank you for sharing', 'journey'. "
